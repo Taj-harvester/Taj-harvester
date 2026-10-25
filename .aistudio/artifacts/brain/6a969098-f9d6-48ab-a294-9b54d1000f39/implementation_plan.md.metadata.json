@@ -1,6 +1,0 @@
-{
-  "summary":  "Implementation plan for Excel-style Customer Transaction Ledger modal and per-customer CSV export on the Pending Dues page, full Dues CSV export, Sales Data CSV export on the Sales Register page, and removal of the Local Setup Instructions card on the Backup page.",
-  "updatedAt":  "2026-10-21T12:13:35.091270681Z",
-  "requestFeedback":  true,
-  "userFacing":  true
-}
