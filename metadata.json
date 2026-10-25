@@ -1,0 +1,6 @@
+{
+  "name": "Taj Harvester — Spare Parts & Billing ERP",
+  "description": "Production inventory, POS billing, dealer order PDF generator, pending dues ledger, and Excel backup system for Taj Harvester tractor and harvester spare parts.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
