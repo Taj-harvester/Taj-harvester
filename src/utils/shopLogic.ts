@@ -1122,7 +1122,7 @@ export function executeAtomicBillTransaction(
 
   const safePaymentMode: PaymentMode = payload.paymentMode === 'UPI' ? 'UPI' : 'CASH';
 
-  const nextSeq = 1001 + state.bills.length;
+  const nextSeq = 83 + state.bills.length;
   const invoiceNumber = `INV-2026-${nextSeq}`;
   const createdBill: Bill = {
     id: `bill-${nextSeq}-${Date.now()}`,
