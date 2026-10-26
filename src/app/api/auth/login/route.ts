@@ -27,7 +27,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const shopState = getShopState();
+    const shopState = await getShopState();
     const owner = shopState.ownerAccount || getDefaultOwnerAccount();
 
     // 1. Check Owner credentials (matches User ID or Owner Email)

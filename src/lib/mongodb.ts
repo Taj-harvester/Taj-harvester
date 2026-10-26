@@ -1,8 +1,13 @@
-import { MongoClient } from 'mongodb';
+import { MongoClient, type Db } from 'mongodb';
 import type { ShopState } from '@/types/shop';
 
 const MONGODB_URI = process.env.MONGODB_URI?.trim() || '';
 const MONGODB_DATABASE = 'partsshop';
+const SHOP_STATE_ID = 'taj_harvester_main_v4';
+type ShopStateDocument = ShopState & {
+  _id: string;
+  updatedAt: string;
+};
 
 declare global {
   var _mongoClientPromise: Promise<MongoClient> | null | undefined;
@@ -40,19 +45,32 @@ export function isMongoConnected(): boolean {
   return Boolean(global._mongoIsConnected);
 }
 
-export async function syncStateToMongo(state: ShopState): Promise<void> {
-  try {
-    const client = await getMongoClient();
-    if (!client) return;
-    const db = client.db(MONGODB_DATABASE);
-    await db
-      .collection('shop_state')
-      .updateOne(
-        { _id: 'taj_harvester_main_v4' as unknown as import('mongodb').ObjectId },
-        { $set: { ...state, updatedAt: new Date().toISOString() } },
-        { upsert: true }
-      );
-  } catch (error) {
-    console.error('MongoDB state sync failed:', error);
+async function getDatabase(): Promise<Db> {
+  const client = await getMongoClient();
+  if (!client) {
+    throw new Error('MongoDB is not configured or unavailable.');
   }
+  return client.db(MONGODB_DATABASE);
+}
+
+export async function loadStateFromMongo(): Promise<ShopState | null> {
+  const db = await getDatabase();
+  const document = await db.collection<ShopStateDocument>('shop_state').findOne({
+    _id: SHOP_STATE_ID,
+  });
+  if (!document) return null;
+  const { _id: _ignoredId, updatedAt: _ignoredUpdatedAt, ...state } = document;
+  if (state.schemaVersion !== 6 || !Array.isArray(state.parts)) {
+    throw new Error('MongoDB shop state has an invalid schema.');
+  }
+  return state;
+}
+
+export async function syncStateToMongo(state: ShopState): Promise<void> {
+  const db = await getDatabase();
+  await db.collection<ShopStateDocument>('shop_state').replaceOne(
+    { _id: SHOP_STATE_ID },
+    { ...state, updatedAt: new Date().toISOString() },
+    { upsert: true }
+  );
 }

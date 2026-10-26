@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { getShopState, saveShopState } from '@/lib/store';
-import { syncStateToMongo } from '@/lib/mongodb';
 import type { SparePart } from '@/types/shop';
 import { detectPartSet, PART_SET_META } from '@/utils/shopLogic';
 
@@ -9,7 +8,7 @@ export const dynamic = 'force-dynamic';
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    let shopState = getShopState();
+    let shopState = await getShopState();
 
     const { partSet, partNumber, nameModel, rackLocation, stockQty, price, minStockLevel, actor } =
       body || {};
@@ -95,8 +94,7 @@ export async function POST(request: Request) {
       ],
     };
 
-    saveShopState(shopState);
-    syncStateToMongo(shopState).catch(() => {});
+    await saveShopState(shopState);
     return NextResponse.json({ part: newPart, state: shopState }, { status: 201 });
   } catch (err) {
     return NextResponse.json({ error: (err as Error).message }, { status: 400 });
