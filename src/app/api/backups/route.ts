@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { getShopState, saveShopState } from '@/lib/store';
-import { syncStateToMongo } from '@/lib/mongodb';
 import type { BackupSnapshot } from '@/types/shop';
 
 export const dynamic = 'force-dynamic';
@@ -8,7 +7,7 @@ export const dynamic = 'force-dynamic';
 export async function POST(request: Request) {
   try {
     const { type, actor } = await request.json();
-    let shopState = getShopState();
+    let shopState = await getShopState();
     const nowIso = new Date().toISOString();
     const activeParts = shopState.parts.filter((p) => !p.isArchived);
     const totalStockValue = activeParts.reduce((s, p) => s + p.price * p.stockQty, 0);
@@ -40,8 +39,7 @@ export async function POST(request: Request) {
       ],
     };
 
-    saveShopState(shopState);
-    syncStateToMongo(shopState).catch(() => {});
+    await saveShopState(shopState);
     return NextResponse.json({ snapshot, state: shopState }, { status: 201 });
   } catch (err) {
     return NextResponse.json({ error: (err as Error).message }, { status: 400 });

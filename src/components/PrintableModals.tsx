@@ -253,6 +253,9 @@ export const PrintableBillPages: React.FC<BillPagesProps> = ({
                   <p className="text-xs font-mono font-semibold text-slate-800 mt-0.5">
                     Ph: {TAJ_HARVESTER_SHOP_INFO.phone}
                   </p>
+                  <p className="text-base font-mono font-bold text-amber-800 mt-1">
+                    GSTIN: {TAJ_HARVESTER_SHOP_INFO.gstin}
+                  </p>
                 </div>
                 <div className="text-right font-mono text-xs space-y-0.5 shrink-0">
                   <div className="text-[11px] font-semibold text-slate-500 uppercase">
@@ -352,7 +355,7 @@ export const PrintableBillPages: React.FC<BillPagesProps> = ({
                           <td className="py-1 px-1.5 font-mono text-slate-500 whitespace-nowrap border border-slate-300">
                             {itemNumber}
                           </td>
-                          <td className="py-1 px-1.5 font-mono font-bold text-slate-900 whitespace-nowrap border border-slate-300">
+                          <td className="py-1 px-1.5 align-top font-mono font-bold text-slate-900 whitespace-normal break-all border border-slate-300">
                             {!item.partNumber ||
                             item.partNumber === 'N/A' ||
                             item.partNumber === '—' ||
@@ -361,7 +364,7 @@ export const PrintableBillPages: React.FC<BillPagesProps> = ({
                               ? '—'
                               : item.partNumber}
                           </td>
-                          <td className="py-1 px-1.5 text-slate-900 font-medium border border-slate-300">
+                          <td className="py-1 px-1.5 align-top text-slate-900 font-medium whitespace-normal break-words border border-slate-300">
                             {formatBillPartName(
                               item.nameModel,
                               item.partSet,
@@ -418,7 +421,6 @@ export const PrintableBillPages: React.FC<BillPagesProps> = ({
             {/* Bottom Anchored Page Totals & Grand Total Footer (Always at bottom of A4 sheet) */}
             <div className="pt-2 mt-2 border-t-2 border-slate-800 flex flex-col sm:flex-row sm:items-end justify-between gap-2">
               <div className="text-[11px] text-slate-600 space-y-0.5">
-                <div>Phone: {TAJ_HARVESTER_SHOP_INFO.phone}</div>
                 <div className="font-semibold text-slate-800 pt-1">
                   Thank you for your business!
                 </div>
@@ -432,52 +434,36 @@ export const PrintableBillPages: React.FC<BillPagesProps> = ({
                 )}
               </div>
 
-              <div className="w-full sm:w-72 space-y-1.5 text-xs font-mono tabular-nums">
-                {page.totalPages > 1 && (
-                  <div className="flex justify-between text-slate-600 pb-1 border-b border-slate-200">
-                    <span>Page {page.pageNumber} Subtotal:</span>
-                    <span className="font-semibold text-slate-900">
-                      ₹{page.pageNetTotal.toLocaleString('en-IN')}
-                    </span>
+              {isLastPage && (
+                <div className="w-full sm:w-72 space-y-1.5 text-xs font-mono tabular-nums">
+                  <div className="flex justify-between text-slate-600">
+                    <span>Bill Subtotal:</span>
+                    <span>₹{bill.subtotal.toLocaleString('en-IN')}</span>
                   </div>
-                )}
-
-                {isLastPage ? (
-                  <>
-                    {bill.discountAmount > 0 && (
-                      <>
-                        <div className="flex justify-between text-slate-600">
-                          <span>Bill Subtotal:</span>
-                          <span>₹{bill.subtotal.toLocaleString('en-IN')}</span>
-                        </div>
-                        <div className="flex justify-between text-amber-800">
-                          <span>Total Discount:</span>
-                          <span>-₹{bill.discountAmount.toLocaleString('en-IN')}</span>
-                        </div>
-                      </>
-                    )}
-                    <div className="flex justify-between text-sm font-bold text-slate-900 pt-1 border-t border-slate-300">
-                      <span>Final Price:</span>
-                      <span>₹{bill.netTotal.toLocaleString('en-IN')}</span>
-                    </div>
-                    <div className="flex justify-between text-emerald-700 font-semibold">
-                      <span>Paid ({bill.paymentMode}):</span>
-                      <span>₹{bill.paidAmount.toLocaleString('en-IN')}</span>
-                    </div>
-                    {bill.dueAmount > 0 && (
-                      <div className="flex justify-between text-amber-800 font-bold">
-                        <span>Balance Due:</span>
-                        <span>₹{bill.dueAmount.toLocaleString('en-IN')}</span>
+                  {bill.discountAmount > 0 && (
+                    <>
+                      <div className="flex justify-between text-amber-800">
+                        <span>Total Discount:</span>
+                        <span>-₹{bill.discountAmount.toLocaleString('en-IN')}</span>
                       </div>
-                    )}
-                  </>
-                ) : (
-                  <div className="flex justify-between text-slate-500 italic">
-                    <span>Final Price on Page {page.totalPages}</span>
-                    <span>—</span>
+                    </>
+                  )}
+                  <div className="flex justify-between text-sm font-bold text-slate-900 pt-1 border-t border-slate-300">
+                    <span>Final Price:</span>
+                    <span>₹{bill.netTotal.toLocaleString('en-IN')}</span>
                   </div>
-                )}
-              </div>
+                  <div className="flex justify-between text-emerald-700 font-semibold">
+                    <span>Paid ({bill.paymentMode}):</span>
+                    <span>₹{bill.paidAmount.toLocaleString('en-IN')}</span>
+                  </div>
+                  {bill.dueAmount > 0 && (
+                    <div className="flex justify-between text-amber-800 font-bold">
+                      <span>Balance Due:</span>
+                      <span>₹{bill.dueAmount.toLocaleString('en-IN')}</span>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         );

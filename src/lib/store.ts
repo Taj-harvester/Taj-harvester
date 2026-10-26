@@ -6,61 +6,42 @@
  * sessions and API route workers.
  */
 
-import fs from 'fs';
-import os from 'os';
-import path from 'path';
 import type { ShopState } from '@/types/shop';
-import { generateInitialShopState, getDefaultOwnerAccount } from '@/utils/shopLogic';
+import { getDefaultOwnerAccount } from '@/utils/shopLogic';
+import { loadStateFromMongo, syncStateToMongo } from './mongodb';
 
-const STORE_PATH = path.join(os.tmpdir(), 'taj-harvester-store-v6.json');
-
-declare global {
-  var globalShopState: ShopState | undefined;
+function createEmptyShopState(): ShopState {
+  return {
+    schemaVersion: 6,
+    ownerAccount: getDefaultOwnerAccount(),
+    staffAccounts: [],
+    parts: [],
+    bills: [],
+    dues: [],
+    dealers: [],
+    dealerOrders: [],
+    auditLogs: [],
+    backups: [],
+  };
 }
 
-export function getShopState(): ShopState {
-  try {
-    if (fs.existsSync(STORE_PATH)) {
-      const raw = fs.readFileSync(STORE_PATH, 'utf-8');
-      const parsed = JSON.parse(raw) as ShopState;
-      if (
-        parsed &&
-        parsed.schemaVersion === 6 &&
-        Array.isArray(parsed.parts) &&
-        parsed.parts.length >= 1
-      ) {
-        if (!parsed.ownerAccount) {
-          parsed.ownerAccount = getDefaultOwnerAccount();
-        }
-        if (!Array.isArray(parsed.staffAccounts)) {
-          parsed.staffAccounts = [];
-        }
-        global.globalShopState = parsed;
-        return parsed;
-      }
+export async function getShopState(): Promise<ShopState> {
+  const storedState = await loadStateFromMongo();
+  if (storedState) {
+    if (!storedState.ownerAccount) {
+      storedState.ownerAccount = getDefaultOwnerAccount();
     }
-  } catch {
-    if (global.globalShopState && global.globalShopState.schemaVersion === 6) {
-      return global.globalShopState;
+    if (!Array.isArray(storedState.staffAccounts)) {
+      storedState.staffAccounts = [];
     }
+    return storedState;
   }
 
-  const initial = generateInitialShopState();
-  saveShopState(initial);
+  const initial = createEmptyShopState();
+  await saveShopState(initial);
   return initial;
 }
 
-export function saveShopState(state: ShopState): void {
-  global.globalShopState = state;
-  try {
-    const tmpPath = `${STORE_PATH}.${process.pid}.${Date.now()}.tmp`;
-    fs.writeFileSync(tmpPath, JSON.stringify(state), 'utf-8');
-    fs.renameSync(tmpPath, STORE_PATH);
-  } catch {
-    try {
-      fs.writeFileSync(STORE_PATH, JSON.stringify(state), 'utf-8');
-    } catch {
-      // Read-only fallback
-    }
-  }
+export async function saveShopState(state: ShopState): Promise<void> {
+  await syncStateToMongo(state);
 }

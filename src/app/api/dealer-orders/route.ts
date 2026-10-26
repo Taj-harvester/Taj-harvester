@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { getShopState, saveShopState } from '@/lib/store';
-import { syncStateToMongo } from '@/lib/mongodb';
 import type { DealerOrder, DealerOrderItem } from '@/types/shop';
 
 export const dynamic = 'force-dynamic';
@@ -8,7 +7,7 @@ export const dynamic = 'force-dynamic';
 export async function POST(request: Request) {
   try {
     const { dealerId, dealerName, items, notes, actor } = await request.json();
-    let shopState = getShopState();
+    let shopState = await getShopState();
 
     const customDealerName = String(dealerName || '').trim();
     const matchedDealer = dealerId
@@ -67,8 +66,7 @@ export async function POST(request: Request) {
       ],
     };
 
-    saveShopState(shopState);
-    syncStateToMongo(shopState).catch(() => {});
+    await saveShopState(shopState);
     return NextResponse.json({ order: newOrder, state: shopState }, { status: 201 });
   } catch (err) {
     return NextResponse.json({ error: (err as Error).message }, { status: 400 });

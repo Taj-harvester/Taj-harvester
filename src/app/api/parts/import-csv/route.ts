@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { getShopState, saveShopState } from '@/lib/store';
-import { syncStateToMongo } from '@/lib/mongodb';
 import { importPartsFromCsv } from '@/utils/shopLogic';
 
 export const dynamic = 'force-dynamic';
@@ -8,7 +7,7 @@ export const dynamic = 'force-dynamic';
 export async function POST(request: Request) {
   try {
     const { csvText, actor, targetSet, forceZeroCount, replaceTargetSet } = await request.json();
-    const shopState = getShopState();
+    const shopState = await getShopState();
     const { nextState, addedCount, updatedCount } = importPartsFromCsv(
       shopState,
       String(csvText || ''),
@@ -20,8 +19,7 @@ export async function POST(request: Request) {
         replaceTargetSet: Boolean(replaceTargetSet),
       }
     );
-    saveShopState(nextState);
-    syncStateToMongo(nextState).catch(() => {});
+    await saveShopState(nextState);
     return NextResponse.json({
       addedCount,
       updatedCount,

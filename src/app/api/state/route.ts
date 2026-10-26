@@ -5,7 +5,7 @@ import { getMongoClient, isMongoConnected } from '@/lib/mongodb';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const shopState = getShopState();
+  const shopState = await getShopState();
   await getMongoClient();
   return NextResponse.json({
     ...shopState,

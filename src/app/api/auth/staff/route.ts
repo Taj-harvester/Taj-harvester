@@ -29,7 +29,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const shopState = getShopState();
+    const shopState = await getShopState();
     const owner = shopState.ownerAccount || getDefaultOwnerAccount();
 
     if (cleanUsername === owner.username.toLowerCase()) {
@@ -62,7 +62,7 @@ export async function POST(request: Request) {
     }
 
     shopState.staffAccounts = staffList;
-    saveShopState(shopState);
+    await saveShopState(shopState);
 
     return NextResponse.json({
       state: shopState,
@@ -77,11 +77,11 @@ export async function DELETE(request: Request) {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
-    const shopState = getShopState();
+    const shopState = await getShopState();
     shopState.staffAccounts = (shopState.staffAccounts || []).filter(
       (s) => s.id !== id
     );
-    saveShopState(shopState);
+    await saveShopState(shopState);
 
     return NextResponse.json({
       state: shopState,

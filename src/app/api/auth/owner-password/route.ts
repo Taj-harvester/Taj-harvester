@@ -26,7 +26,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const shopState = getShopState();
+    const shopState = await getShopState();
     const owner = shopState.ownerAccount || getDefaultOwnerAccount();
 
     if (mode === 'FORGOT_EMAIL_RESET') {
@@ -46,7 +46,7 @@ export async function POST(request: Request) {
         password: cleanNewPass,
         updatedAt: new Date().toISOString(),
       };
-      saveShopState(shopState);
+      await saveShopState(shopState);
 
       return NextResponse.json({
         message: 'Owner password has been reset successfully.',
@@ -69,7 +69,7 @@ export async function POST(request: Request) {
       email: email ? String(email).trim() : owner.email,
       updatedAt: new Date().toISOString(),
     };
-    saveShopState(shopState);
+    await saveShopState(shopState);
 
     return NextResponse.json({
       message: 'Owner password updated successfully.',

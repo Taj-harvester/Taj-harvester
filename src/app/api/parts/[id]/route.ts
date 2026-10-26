@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { getShopState, saveShopState } from '@/lib/store';
-import { syncStateToMongo } from '@/lib/mongodb';
 import type { SparePart } from '@/types/shop';
 import { detectPartSet, PART_SET_META } from '@/utils/shopLogic';
 
@@ -13,7 +12,7 @@ export async function PUT(
   try {
     const { id } = await params;
     const body = await request.json();
-    let shopState = getShopState();
+    let shopState = await getShopState();
 
     const idx = shopState.parts.findIndex((p) => p.id === id);
     if (idx === -1) {
@@ -127,8 +126,7 @@ export async function PUT(
       ],
     };
 
-    saveShopState(shopState);
-    syncStateToMongo(shopState).catch(() => {});
+    await saveShopState(shopState);
     return NextResponse.json({ part: updatedPart, state: shopState });
   } catch (err) {
     return NextResponse.json({ error: (err as Error).message }, { status: 400 });
@@ -143,7 +141,7 @@ export async function DELETE(
     const { id } = await params;
     const { searchParams } = new URL(request.url);
     const actor = searchParams.get('actor') || 'tajharvester000';
-    let shopState = getShopState();
+    let shopState = await getShopState();
 
     const target = shopState.parts.find((p) => p.id === id);
     if (!target) {
@@ -169,8 +167,7 @@ export async function DELETE(
       ],
     };
 
-    saveShopState(shopState);
-    syncStateToMongo(shopState).catch(() => {});
+    await saveShopState(shopState);
     return NextResponse.json({ state: shopState });
   } catch (err) {
     return NextResponse.json({ error: (err as Error).message }, { status: 400 });

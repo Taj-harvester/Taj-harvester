@@ -1,20 +1,36 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# Taj Harvester
 
-# Run and deploy your AI Studio app
+Inventory, POS billing, dealer orders, pending dues, and Excel backup management
+for Taj Harvester spare parts.
 
-This contains everything you need to run your app locally.
-
-View your app in AI Studio: https://ai.studio/apps/6a969098-f9d6-48ab-a294-9b54d1000f39
-
-## Run Locally
-
-**Prerequisites:**  Node.js
-
+## Local development
 
 1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+
+   ```bash
+   npm install
+   ```
+
+2. Create `.env.local` with the required production variables:
+
+   - `MONGODB_URI`
+   - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
+   - `CLERK_SECRET_KEY`
+   - `OWNER_USER_ID`
+   - `OWNER_PASSWORD`
+   - `OWNER_EMAIL`
+   - `OWNER_CLERK_USER_ID`
+
+3. Start the development server:
+
+   ```bash
+   npm run dev
+   ```
+
+## Validation
+
+```bash
+npm run lint
+npm test
+npm run build
+```

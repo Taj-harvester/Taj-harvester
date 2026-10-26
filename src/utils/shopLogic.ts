@@ -32,6 +32,7 @@ export const TAJ_HARVESTER_SHOP_INFO = {
   name: 'TAJ HARVESTER',
   address: 'Jayer, Pandua, Hooghly',
   phone: '7872339053 / 8337803644',
+  gstin: '19BBKPM0354H1ZK',
 } as const;
 
 export interface PaginatedBillPage {
@@ -517,7 +518,6 @@ export function getDefaultOwnerAccount(): OwnerAccount {
 export function generateInitialShopState(): ShopState {
   const parts = generateSeedParts(1040);
   const ownerAccount = getDefaultOwnerAccount();
-
   const staffAccounts: StaffAccount[] = [
     {
       id: 'staff-01',
@@ -3208,4 +3208,3 @@ export function parseXlsxBufferToCsv(
   }
   return inspected.sheets[inspected.preferredSheetIndex]?.csvText || inspected.combinedCsvText;
 }
-

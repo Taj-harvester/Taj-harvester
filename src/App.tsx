@@ -52,7 +52,6 @@ import {
   generateAllDuesXlsxBuffer,
   generateCsvBackup,
   generateCustomerLedgerCsv,
-  generateInitialShopState,
   generateSalesCsv,
   generateXlsxBufferFromCsv,
   getDefaultOwnerAccount,
@@ -135,7 +134,18 @@ const SYNC_CHANNEL_NAME = 'taj_harvester_multi_staff_sync_v3';
 export default function App({ initialTab = 'dashboard' }: { initialTab?: ActiveTab } = {}) {
   const pathname = usePathname();
 
-  const [state, setState] = useState<ShopState>(() => generateInitialShopState());
+  const [state, setState] = useState<ShopState>(() => ({
+    schemaVersion: 6,
+    ownerAccount: getDefaultOwnerAccount(),
+    staffAccounts: [],
+    parts: [],
+    bills: [],
+    dues: [],
+    dealers: [],
+    dealerOrders: [],
+    auditLogs: [],
+    backups: [],
+  }));
   const [mongoConnected, setMongoConnected] = useState(false);
   const [currentUser, setCurrentUser] = useState<ShopUser>(DEFAULT_OWNER);
 
@@ -188,21 +198,7 @@ export default function App({ initialTab = 'dashboard' }: { initialTab?: ActiveT
   }, []);
 
   // POS Billing Cart (includes partSet and per-part discount)
-  const [cart, setCart] = useState<BillItem[]>(() => {
-    const initialParts = generateInitialShopState().parts;
-    return [
-      {
-        partId: initialParts[0].id,
-        partSet: initialParts[0].partSet,
-        partNumber: initialParts[0].partNumber,
-        nameModel: initialParts[0].nameModel,
-        unitPrice: initialParts[0].price,
-        quantity: 2,
-        discount: 0,
-        lineTotal: initialParts[0].price * 2,
-      },
-    ];
-  });
+  const [cart, setCart] = useState<BillItem[]>([]);
 
   // Modals for Print Invoice, Dealer Order PDF, and /sign-in Page
   const [inspectedBill, setInspectedBill] = useState<Bill | null>(null);
@@ -213,7 +209,7 @@ export default function App({ initialTab = 'dashboard' }: { initialTab?: ActiveT
 
   // Applies validated server state and reconciles POS cart prices against latest catalog
   const applyServerState = useCallback((data: ShopState & { meta?: { mongoConnected?: boolean } }) => {
-    if (!data || !Array.isArray(data.parts) || data.parts.length === 0) return;
+    if (!data || !Array.isArray(data.parts)) return;
     setState({
       schemaVersion: data.schemaVersion || 3,
       ownerAccount: data.ownerAccount || getDefaultOwnerAccount(),

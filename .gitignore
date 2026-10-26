@@ -6,4 +6,6 @@ coverage/
 *.log
 .env.*
 .env
+.aistudio/
 .next/
+public/assets/aistudio/
