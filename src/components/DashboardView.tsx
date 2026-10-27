@@ -39,7 +39,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const totalStockValue = activeParts.reduce((sum, p) => sum + p.price * p.stockQty, 0);
   const totalUnitsInShop = activeParts.reduce((sum, p) => sum + p.stockQty, 0);
 
-  const validBills = state.bills.filter((b) => !b.isVoided);
+  const validBills = state.bills;
   const todayBills = validBills.filter((b) => isTodayBill(b.createdAt));
   const todaySalesTotal = todayBills.reduce((sum, b) => sum + b.netTotal, 0);
   const todayCollectedTotal = todayBills.reduce((sum, b) => sum + b.paidAmount, 0);
@@ -297,7 +297,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <div className="pt-3 flex items-center justify-between">
                 <span className="text-slate-500">Bill Deletion Policy</span>
                 <span className="font-semibold text-emerald-700">
-                  Soft-Void Only (Zero Data Loss)
+                  Delete Bill &amp; Restore Stock
                 </span>
               </div>
               <div className="pt-3 flex items-center justify-between">
@@ -407,9 +407,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     <td className="py-3 px-4">
                       <div className="font-mono text-xs font-semibold text-slate-900">
                         {bill.invoiceNumber}
-                        {bill.isVoided && (
-                          <span className="ml-2 text-red-600 font-sans">· Voided</span>
-                        )}
                       </div>
                       <div className="text-xs text-slate-600">
                         {bill.customerName} · {bill.customerVillage}

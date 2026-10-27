@@ -6,8 +6,8 @@
  *    - Shop Header: TAJ HARVESTER, Address: Jayer, Pandua, Hooghly, Ph: 7872339053/8337803644
  *    - Displays "(org)" on every Original part (Kubota, Yanmar, GM)
  *    - Displays Customer Name, Phone, and Address
- *    - Uses a fixed 20-row table on each A4 page and paginates larger bills
- *      keeping identical layout & branding on every page while updating part items & prices
+ *    - Measures wrapped item rows and paginates each A4 page by available space
+ *      while keeping identical layout & branding on every page
  *    - Automatically triggers browser print settings (window.print()) on Print click
  * 2. DealerOrderPdfModal:
  *    - Clean printable / downloadable Dealer Order list with Taj Harvester branding
@@ -15,7 +15,7 @@
  *    - Owner & Staff Sign-In + Developer Signature for Sk Nasim Ali on every page
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   CheckCircle2,
   Download,
@@ -24,13 +24,12 @@ import {
   Mail,
   Printer,
 } from 'lucide-react';
-import type { Bill, DealerOrder } from '../types/shop';
+import type { Bill, BillItem, DealerOrder } from '../types/shop';
 import {
   TAJ_HARVESTER_SHOP_INFO,
   formatBillPartName,
   formatDateShortDisplay,
   formatDateTimeDisplay,
-  paginateBillItemsForPrint,
 } from '../utils/shopLogic';
 import { Button, Dialog, Input } from './ui/primitives';
 
@@ -212,22 +211,118 @@ export const DeveloperSignatureBox: React.FC<{ className?: string }> = ({
 
 interface BillPagesProps {
   bill: Bill;
-  itemsPerPage?: number;
   isPrintCopy?: boolean;
+  onPageCountChange?: (pageCount: number) => void;
 }
 
 /**
  * Renders 1, 2, 3+ full A4 PDF-style pages for a Customer Bill.
- * Each page occupies a full A4 sheet with a fixed 20-row table, then flows to
- * another page when items exceed the per-page row count.
+ * Each page occupies a full A4 sheet and uses the available space for as many
+ * item rows as the print layout allows.
  */
 export const PrintableBillPages: React.FC<BillPagesProps> = ({
   bill,
-  itemsPerPage = 20,
   isPrintCopy = false,
+  onPageCountChange,
 }) => {
-  const pages = paginateBillItemsForPrint(bill.items, itemsPerPage);
+  const [pageChunks, setPageChunks] = useState<BillItem[][]>(() => [bill.items]);
+  const rowRefs = useRef(new Map<number, HTMLTableRowElement>());
+  const tableRefs = useRef(new Map<number, HTMLDivElement>());
+  const firstFixedRef = useRef<HTMLDivElement>(null);
+  const lastLayoutKey = useRef('');
   const hasAnyItemDiscount = bill.items.some((i) => (i.discount || 0) > 0);
+
+  useEffect(() => {
+    setPageChunks([bill.items]);
+    lastLayoutKey.current = '';
+    rowRefs.current.clear();
+    tableRefs.current.clear();
+  }, [bill]);
+
+  useLayoutEffect(() => {
+    if (!bill.items.length || !tableRefs.current.size) return;
+
+    let frameId = 0;
+    const measure = () => {
+      const firstTable = tableRefs.current.get(0);
+      if (!firstTable) return;
+
+      const firstHeader = firstTable.querySelector('thead tr');
+      const headerHeight = firstHeader?.getBoundingClientRect().height ?? 0;
+      const firstAvailable = firstTable.getBoundingClientRect().height - headerHeight;
+      const firstFixedHeight = firstFixedRef.current?.getBoundingClientRect().height ?? 0;
+      const continuationTable = tableRefs.current.get(1) || firstTable;
+      const continuationHeader = continuationTable.querySelector('thead tr');
+      const continuationAvailable =
+        continuationTable.getBoundingClientRect().height -
+        (continuationHeader?.getBoundingClientRect().height ?? headerHeight);
+      const rowHeights = bill.items.map((_, index) =>
+        rowRefs.current.get(index)?.getBoundingClientRect().height ?? 0
+      );
+
+      if (
+        rowHeights.some((height) => height <= 0) ||
+        firstAvailable <= 0 ||
+        continuationAvailable <= 0
+      ) {
+        return;
+      }
+
+      const effectiveContinuationAvailable = Math.max(
+        continuationAvailable,
+        firstAvailable + Math.max(0, firstFixedHeight - 28)
+      );
+      const chunks: BillItem[][] = [];
+      let itemIndex = 0;
+      let available = firstAvailable;
+
+      while (itemIndex < bill.items.length) {
+        const chunk: BillItem[] = [];
+        let used = 0;
+        while (
+          itemIndex < bill.items.length &&
+          (chunk.length === 0 || used + rowHeights[itemIndex] <= available)
+        ) {
+          chunk.push(bill.items[itemIndex]);
+          used += rowHeights[itemIndex];
+          itemIndex += 1;
+        }
+        chunks.push(chunk);
+        available = effectiveContinuationAvailable;
+      }
+
+      const layoutKey = chunks.map((chunk) => chunk.length).join(',');
+      if (layoutKey !== lastLayoutKey.current) {
+        lastLayoutKey.current = layoutKey;
+        setPageChunks(chunks);
+      }
+    };
+
+    frameId = window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(measure);
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [bill, pageChunks]);
+
+  const pages = pageChunks.map((items, pageIndex) => {
+    const startIndex = pageChunks
+      .slice(0, pageIndex)
+      .reduce((total, chunk) => total + chunk.length, 0);
+    return {
+      pageNumber: pageIndex + 1,
+      totalPages: pageChunks.length,
+      startIndex,
+      items,
+      pageSubtotal: items.reduce((total, item) => total + item.unitPrice * item.quantity, 0),
+      pageDiscount: items.reduce((total, item) => total + (item.discount || 0), 0),
+      pageNetTotal: items.reduce((total, item) => total + item.lineTotal, 0),
+    };
+  });
+
+  useEffect(() => {
+    onPageCountChange?.(pages.length);
+  }, [onPageCountChange, pages.length]);
 
   return (
     <div className="space-y-6 print:space-y-0">
@@ -241,7 +336,10 @@ export const PrintableBillPages: React.FC<BillPagesProps> = ({
           >
             {/* Top Group: Header + Customer Info + Items Table */}
             <div className="space-y-2 flex-1 flex flex-col min-h-0">
-              {/* Identical Shop Header on Every Page */}
+              {/* Branding and customer details belong to the first bill only. */}
+              {page.pageNumber === 1 && (
+                <>
+              <div ref={firstFixedRef} className="space-y-2">
               <div className="flex flex-row items-start justify-between gap-4 pb-4 border-b-2 border-slate-800">
                 <div>
                   <h3 className="text-2xl font-bold tracking-tight text-slate-900 font-display uppercase">
@@ -276,7 +374,6 @@ export const PrintableBillPages: React.FC<BillPagesProps> = ({
                 </div>
               </div>
 
-              {/* Customer Details & Payment Status on Every Page */}
               <div className="grid grid-cols-2 gap-4 p-3.5 rounded-lg bg-slate-50 border border-slate-200 text-xs">
                 <div>
                   <div className="text-slate-500">Customer Details</div>
@@ -290,16 +387,10 @@ export const PrintableBillPages: React.FC<BillPagesProps> = ({
                   <div className="text-slate-500">Payment Status</div>
                   <div
                     className={`font-bold text-sm mt-0.5 ${
-                      bill.isVoided
-                        ? 'text-red-700'
-                        : bill.dueAmount > 0
-                        ? 'text-amber-700'
-                        : 'text-emerald-700'
+                      bill.dueAmount > 0 ? 'text-amber-700' : 'text-emerald-700'
                     }`}
                   >
-                    {bill.isVoided
-                      ? 'VOIDED'
-                      : bill.dueAmount > 0
+                    {bill.dueAmount > 0
                       ? `DUE: ₹${bill.dueAmount.toLocaleString('en-IN')}`
                       : 'PAID'}
                   </div>
@@ -309,36 +400,59 @@ export const PrintableBillPages: React.FC<BillPagesProps> = ({
                   </div>
                 </div>
               </div>
+              </div>
+                </>
+              )}
+
+              {page.pageNumber > 1 && (
+                <div className="pb-2 border-b-2 border-slate-800 text-xs font-semibold text-slate-600">
+                  <div className="flex items-center justify-between gap-3">
+                    <span>
+                      Customer Bill {bill.invoiceNumber} — Continued from Page{' '}
+                      {page.pageNumber - 1}
+                    </span>
+                    <span className="text-amber-800">
+                      Page {page.pageNumber} of {page.totalPages}
+                    </span>
+                  </div>
+                </div>
+              )}
 
               {/* Page Items Table (No Rack No; shows (org) on Kubota, Yanmar, GM) */}
-              <div className="overflow-hidden flex-1 min-h-0">
+              <div
+                ref={(element) => {
+                  if (element) tableRefs.current.set(page.pageNumber - 1, element);
+                  else tableRefs.current.delete(page.pageNumber - 1);
+                }}
+                className="overflow-visible flex-1 min-h-0"
+              >
                 <table className="w-full text-left border-collapse text-[10px] table-fixed">
                   <thead>
-                    <tr className="border border-slate-400 bg-slate-50 text-slate-700">
-                      <th className="py-1 px-1.5 font-semibold whitespace-nowrap w-8 border border-slate-300">
+                    <tr className="border-2 border-slate-700 bg-slate-200 text-slate-900">
+                      <th className="py-1 px-1.5 font-semibold whitespace-nowrap w-8 border-2 border-slate-700">
                         #
                       </th>
-                      <th className="py-1 px-1.5 font-semibold whitespace-nowrap w-28 border border-slate-300">
+                      <th className="py-1 px-1.5 font-semibold whitespace-nowrap w-28 border-2 border-slate-700">
                         Part Number
                       </th>
-                      <th className="py-1 px-1.5 font-semibold border border-slate-300">Description</th>
-                      <th className="py-1 px-1.5 font-semibold text-right whitespace-nowrap w-12 border border-slate-300">
+                      <th className="py-1 px-1.5 font-semibold border-2 border-slate-700">Description</th>
+                      <th className="py-1 px-1.5 font-semibold text-right whitespace-nowrap w-12 border-2 border-slate-700">
                         Count
                       </th>
-                      <th className="py-1 px-1.5 font-semibold text-right whitespace-nowrap w-20 border border-slate-300">
+                      <th className="py-1 px-1.5 font-semibold text-right whitespace-nowrap w-20 border-2 border-slate-700">
                         Single Price
                       </th>
                       {hasAnyItemDiscount && (
                         <>
-                          <th className="py-1 px-1 font-semibold text-right whitespace-nowrap w-12 border border-slate-300">
+                          <th className="py-1 px-1 font-semibold text-right whitespace-nowrap w-12 border-2 border-slate-700">
                             Disc. %
                           </th>
-                          <th className="py-1 px-1 font-semibold text-right whitespace-nowrap w-16 border border-slate-300">
+                          <th className="py-1 px-1 font-semibold text-right whitespace-nowrap w-16 border-2 border-slate-700">
                             Disc. Amt.
                           </th>
                         </>
                       )}
-                      <th className="py-1 px-1.5 font-semibold text-right whitespace-nowrap w-20 border border-slate-300">
+                      <th className="py-1 px-1.5 font-semibold text-right whitespace-nowrap w-20 border-2 border-slate-700">
                         Total Price
                       </th>
                     </tr>
@@ -351,11 +465,17 @@ export const PrintableBillPages: React.FC<BillPagesProps> = ({
                         item.discountPercent ??
                         (discountBase > 0 ? (item.discount / discountBase) * 100 : 0);
                       return (
-                        <tr key={`${item.partId}-${itemNumber}`}>
-                          <td className="py-1 px-1.5 font-mono text-slate-500 whitespace-nowrap border border-slate-300">
+                        <tr
+                          key={`${item.partId}-${itemNumber}`}
+                          ref={(element) => {
+                            if (element) rowRefs.current.set(itemNumber - 1, element);
+                            else rowRefs.current.delete(itemNumber - 1);
+                          }}
+                        >
+                          <td className="py-1 px-1.5 font-mono text-slate-700 whitespace-nowrap border-2 border-slate-500">
                             {itemNumber}
                           </td>
-                          <td className="py-1 px-1.5 align-top font-mono font-bold text-slate-900 whitespace-normal break-all border border-slate-300">
+                          <td className="py-1 px-1.5 align-top font-mono font-bold text-slate-950 whitespace-normal break-all border-2 border-slate-500">
                             {!item.partNumber ||
                             item.partNumber === 'N/A' ||
                             item.partNumber === '—' ||
@@ -364,106 +484,107 @@ export const PrintableBillPages: React.FC<BillPagesProps> = ({
                               ? '—'
                               : item.partNumber}
                           </td>
-                          <td className="py-1 px-1.5 align-top text-slate-900 font-medium whitespace-normal break-words border border-slate-300">
+                          <td className="py-1 px-1.5 align-top text-slate-950 font-semibold whitespace-normal break-words border-2 border-slate-500">
                             {formatBillPartName(
                               item.nameModel,
                               item.partSet,
                               item.partNumber
                             )}
                           </td>
-                          <td className="py-1 px-1.5 text-right font-mono tabular-nums font-semibold whitespace-nowrap border border-slate-300">
+                          <td className="py-1 px-1.5 text-right font-mono tabular-nums font-semibold whitespace-nowrap border-2 border-slate-500">
                             {item.quantity}
                           </td>
-                          <td className="py-1 px-1.5 text-right font-mono tabular-nums text-slate-700 whitespace-nowrap border border-slate-300">
+                          <td className="py-1 px-1.5 text-right font-mono tabular-nums text-slate-800 whitespace-nowrap border-2 border-slate-500">
                             ₹{item.unitPrice.toLocaleString('en-IN')}
                           </td>
                           {hasAnyItemDiscount && (
                             <>
-                              <td className="py-1 px-1 text-right font-mono tabular-nums text-amber-800 whitespace-nowrap border border-slate-300">
+                              <td className="py-1 px-1 text-right font-mono tabular-nums text-amber-800 whitespace-nowrap border-2 border-slate-500">
                                 {discountPercent > 0 ? `${discountPercent}%` : '—'}
                               </td>
-                              <td className="py-1 px-1 text-right font-mono tabular-nums text-amber-800 whitespace-nowrap border border-slate-300">
+                              <td className="py-1 px-1 text-right font-mono tabular-nums text-amber-800 whitespace-nowrap border-2 border-slate-500">
                                 {item.discount > 0
                                   ? `-₹${item.discount.toLocaleString('en-IN')}`
                                   : '—'}
                               </td>
                             </>
                           )}
-                          <td className="py-1 px-1.5 text-right font-mono tabular-nums font-bold text-slate-900 whitespace-nowrap border border-slate-300">
+                          <td className="py-1 px-1.5 text-right font-mono tabular-nums font-bold text-slate-900 whitespace-nowrap border-2 border-slate-500">
                             ₹{item.lineTotal.toLocaleString('en-IN')}
                           </td>
                         </tr>
                       );
                     })}
-                    {Array.from({ length: Math.max(0, itemsPerPage - page.items.length) }).map(
-                      (_, idx) => (
-                        <tr key={`empty-row-${page.pageNumber}-${idx}`} aria-hidden="true">
-                          <td className="py-1 px-1 border border-slate-300">&nbsp;</td>
-                          <td className="py-1 px-1 border border-slate-300">&nbsp;</td>
-                          <td className="py-1 px-1.5 border border-slate-300">&nbsp;</td>
-                          <td className="py-1 px-1.5 border border-slate-300">&nbsp;</td>
-                          <td className="py-1 px-1.5 border border-slate-300">&nbsp;</td>
-                          {hasAnyItemDiscount && (
-                            <>
-                              <td className="py-1 px-1.5 border border-slate-300">&nbsp;</td>
-                              <td className="py-1 px-1.5 border border-slate-300">&nbsp;</td>
-                            </>
-                          )}
-                          <td className="py-1 px-1.5 border border-slate-300">&nbsp;</td>
-                        </tr>
-                      )
-                    )}
                   </tbody>
                 </table>
               </div>
             </div>
 
-            {/* Bottom Anchored Page Totals & Grand Total Footer (Always at bottom of A4 sheet) */}
-            <div className="pt-2 mt-2 border-t-2 border-slate-800 flex flex-col sm:flex-row sm:items-end justify-between gap-2">
-              <div className="text-[11px] text-slate-600 space-y-0.5">
-                <div className="font-semibold text-slate-800 pt-1">
-                  Thank you for your business!
-                </div>
-                <div className="text-[10px] text-slate-500">
-                  GST included in the above prices.
-                </div>
+            {/* Bottom footer: page subtotal on continuations, grand totals only on the last page. */}
+            <div className="pt-2 mt-2 border-t-2 border-slate-800 space-y-2">
+              <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
                 {!isLastPage && (
-                  <div className="font-semibold text-amber-800 pt-1">
-                    Continued on Page {page.pageNumber + 1} of {page.totalPages}...
+                  <>
+                  <div className="text-xs font-mono tabular-nums font-semibold text-slate-700">
+                    <div className="flex justify-between gap-8">
+                      <span>Subtotal on this bill:</span>
+                      <span>₹{page.pageSubtotal.toLocaleString('en-IN')}</span>
+                    </div>
                   </div>
+                  <div className="ml-auto text-right text-xs font-semibold text-amber-800">
+                    Continues on Page {page.pageNumber + 1} of {page.totalPages}
+                  </div>
+                  </>
                 )}
-              </div>
 
-              {isLastPage && (
-                <div className="w-full sm:w-72 space-y-1.5 text-xs font-mono tabular-nums">
-                  <div className="flex justify-between text-slate-600">
-                    <span>Bill Subtotal:</span>
-                    <span>₹{bill.subtotal.toLocaleString('en-IN')}</span>
+                {isLastPage && (
+                  <>
+                  <div className="flex-1 text-[11px] text-slate-600 space-y-0.5">
+                    <div className="font-semibold text-slate-800 pt-1">
+                      Thank you for your business!
+                    </div>
+                    <div className="text-[10px] text-slate-500">
+                      GST included in the above prices.
+                    </div>
                   </div>
-                  {bill.discountAmount > 0 && (
-                    <>
+                  <div className="w-full sm:w-72 space-y-1.5 text-xs font-mono tabular-nums">
+                    <div className="flex justify-between text-slate-600">
+                      <span>Bill Subtotal:</span>
+                      <span>₹{bill.subtotal.toLocaleString('en-IN')}</span>
+                    </div>
+                    {bill.discountAmount > 0 && (
                       <div className="flex justify-between text-amber-800">
                         <span>Total Discount:</span>
                         <span>-₹{bill.discountAmount.toLocaleString('en-IN')}</span>
                       </div>
-                    </>
-                  )}
-                  <div className="flex justify-between text-sm font-bold text-slate-900 pt-1 border-t border-slate-300">
-                    <span>Final Price:</span>
-                    <span>₹{bill.netTotal.toLocaleString('en-IN')}</span>
-                  </div>
-                  <div className="flex justify-between text-emerald-700 font-semibold">
-                    <span>Paid ({bill.paymentMode}):</span>
-                    <span>₹{bill.paidAmount.toLocaleString('en-IN')}</span>
-                  </div>
-                  {bill.dueAmount > 0 && (
-                    <div className="flex justify-between text-amber-800 font-bold">
-                      <span>Balance Due:</span>
-                      <span>₹{bill.dueAmount.toLocaleString('en-IN')}</span>
+                    )}
+                    <div className="flex justify-between text-sm font-bold text-slate-900 pt-1 border-t border-slate-300">
+                      <span>Final Price:</span>
+                      <span>₹{bill.netTotal.toLocaleString('en-IN')}</span>
                     </div>
-                  )}
+                    <div className="flex justify-between text-emerald-700 font-semibold">
+                      <span>Paid ({bill.paymentMode}):</span>
+                      <span>₹{bill.paidAmount.toLocaleString('en-IN')}</span>
+                    </div>
+                    {bill.dueAmount > 0 && (
+                      <div className="flex justify-between text-amber-800 font-bold">
+                        <span>Balance Due:</span>
+                        <span>₹{bill.dueAmount.toLocaleString('en-IN')}</span>
+                      </div>
+                    )}
+                  </div>
+                  </>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 text-[10px] font-semibold text-slate-700">
+                <div className="border-2 border-slate-500 rounded-md h-9 px-2 pt-1">
+                  Customer Signature
                 </div>
-              )}
+                <div className="border-2 border-slate-500 rounded-md h-9 px-2 pt-1">
+                  Biller Signature
+                </div>
+              </div>
             </div>
           </div>
         );
@@ -480,9 +601,14 @@ interface InvoiceModalProps {
 
 export const PrintableInvoiceModal: React.FC<InvoiceModalProps> = ({
   bill,
-  autoPrint = true,
+  autoPrint = false,
   onClose,
 }) => {
+  const [pageCount, setPageCount] = useState(1);
+  useEffect(() => {
+    setPageCount(1);
+  }, [bill?.id]);
+
   useEffect(() => {
     if (!bill || !autoPrint) return;
     const timer = window.setTimeout(() => {
@@ -493,7 +619,7 @@ export const PrintableInvoiceModal: React.FC<InvoiceModalProps> = ({
 
   if (!bill) return null;
 
-  const totalPages = Math.ceil(Math.max(1, bill.items.length) / 12);
+  const totalPages = pageCount;
 
   return (
     <Dialog
@@ -505,7 +631,7 @@ export const PrintableInvoiceModal: React.FC<InvoiceModalProps> = ({
       maxWidth="max-w-4xl"
     >
       <div className="space-y-5 text-slate-900" data-testid="printable-invoice-modal">
-        <PrintableBillPages bill={bill} itemsPerPage={20} />
+        <PrintableBillPages bill={bill} onPageCountChange={setPageCount} />
 
         <div className="pt-4 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 no-print">
           <div className="text-xs text-slate-500">

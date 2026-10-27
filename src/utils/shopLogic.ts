@@ -6,7 +6,7 @@
  * 1. 4 Database Sets ('kubota', 'yanmar', 'gm', 'local') & (org) label formatting
  * 2. 5-Column CSV Export & Restore (Part Number, Part Name, Rack No, Count, Selling Price)
  * 3. Per-Part Discount Billing & Atomic Stock Deduction
- * 4. Pending Customer Dues (Khata) & Soft-Void Bill Reversal
+ * 4. Pending Customer Dues (Khata) & Bill Deletion
  * 5. Owner (.env) & Staff Credentials Management
  */
 
@@ -34,6 +34,9 @@ export const TAJ_HARVESTER_SHOP_INFO = {
   phone: '7872339053 / 8337803644',
   gstin: '19BBKPM0354H1ZK',
 } as const;
+
+const BILL_INVOICE_PREFIX = 'INV-85';
+const BILL_INVOICE_START = 8901;
 
 export interface PaginatedBillPage {
   pageNumber: number;
@@ -578,7 +581,6 @@ export function generateInitialShopState(): ShopState {
       paymentMode: 'CASH',
       createdBy: 'tajharvester000',
       createdAt: '2026-10-18T09:15:00.000Z',
-      isVoided: false,
     },
     {
       id: 'bill-1002',
@@ -617,7 +619,6 @@ export function generateInitialShopState(): ShopState {
       paymentMode: 'UPI',
       createdBy: 'staff_ravi',
       createdAt: '2026-10-18T10:30:00.000Z',
-      isVoided: false,
     },
     {
       id: 'bill-1003',
@@ -656,7 +657,6 @@ export function generateInitialShopState(): ShopState {
       paymentMode: 'UPI',
       createdBy: 'tajharvester000',
       createdAt: '2026-10-17T15:40:00.000Z',
-      isVoided: false,
     },
     {
       id: 'bill-1004',
@@ -685,7 +685,6 @@ export function generateInitialShopState(): ShopState {
       paymentMode: 'CASH',
       createdBy: 'staff_ravi',
       createdAt: '2026-10-15T12:10:00.000Z',
-      isVoided: false,
     },
   ];
 
@@ -1122,10 +1121,19 @@ export function executeAtomicBillTransaction(
 
   const safePaymentMode: PaymentMode = payload.paymentMode === 'UPI' ? 'UPI' : 'CASH';
 
-  const nextSeq = 83 + state.bills.length;
-  const invoiceNumber = `INV-2026-${nextSeq}`;
+  const usedInvoiceSequences = new Set(
+    state.bills
+      .map((bill) => bill.invoiceNumber.match(/^INV-85-(\d+)$/i))
+      .filter((match): match is RegExpMatchArray => Boolean(match))
+      .map((match) => Number(match[1]))
+  );
+  let nextInvoiceSequence = BILL_INVOICE_START;
+  while (usedInvoiceSequences.has(nextInvoiceSequence)) {
+    nextInvoiceSequence += 1;
+  }
+  const invoiceNumber = `${BILL_INVOICE_PREFIX}-${nextInvoiceSequence}`;
   const createdBill: Bill = {
-    id: `bill-${nextSeq}-${Date.now()}`,
+    id: `bill-${nextInvoiceSequence}-${Date.now()}`,
     invoiceNumber,
     customerName,
     customerPhone: payload.customerPhone.trim() || 'N/A',
@@ -1140,7 +1148,6 @@ export function executeAtomicBillTransaction(
     paymentMode: safePaymentMode,
     createdBy: payload.createdBy,
     createdAt: nowIso,
-    isVoided: false,
   };
 
   const duesClone = state.dues.map((d) => ({
@@ -1282,7 +1289,7 @@ export function recordDuePayment(
   let remainingToAllocate = cleanAmount;
   const billsClone = state.bills.map((b) => ({ ...b }));
   const customerBills = billsClone
-    .filter((b) => targetDue.billIds.includes(b.id) && !b.isVoided && b.dueAmount > 0)
+    .filter((b) => targetDue.billIds.includes(b.id) && b.dueAmount > 0)
     .reverse();
 
   for (const bill of customerBills) {
@@ -1315,22 +1322,18 @@ export function recordDuePayment(
 }
 
 /**
- * Soft-deletes (voids) a bill without ever hard-deleting it,
- * restores stock quantities, and adjusts any pending due.
+ * Permanently deletes a bill, restores its stock, removes its due references,
+ * and leaves its invoice sequence available for reuse.
  */
-export function voidBillTransaction(
+export function deleteBillTransaction(
   state: ShopState,
   billId: string,
-  reason: string,
-  voidedBy: string,
+  deletedBy: string,
   nowIso = new Date().toISOString()
 ): ShopState {
   const targetBill = state.bills.find((b) => b.id === billId);
   if (!targetBill) {
     throw new Error('Bill not found.');
-  }
-  if (targetBill.isVoided) {
-    throw new Error('Bill is already voided.');
   }
 
   const partsClone = state.parts.map((p) => ({ ...p }));
@@ -1342,39 +1345,39 @@ export function voidBillTransaction(
     }
   }
 
-  const billsClone = state.bills.map((b) =>
-    b.id === billId
-      ? {
-          ...b,
-          isVoided: true,
-          voidReason: reason.trim() || 'Voided by owner with stock reversal',
-          voidedAt: nowIso,
-          voidedBy,
-        }
-      : b
-  );
-
-  const duesClone = state.dues.map((d) => {
-    if (!d.billIds.includes(billId)) return d;
-    const nextBilled = Math.max(0, d.totalBilled - targetBill.netTotal);
-    const nextPaid = Math.max(0, d.totalPaid - targetBill.paidAmount);
-    const nextBalance = Math.max(0, d.balanceDue - targetBill.dueAmount);
-    return {
-      ...d,
-      totalBilled: nextBilled,
-      totalPaid: nextPaid,
-      balanceDue: nextBalance,
-      status: nextBalance === 0 ? ('SETTLED' as const) : ('ACTIVE_DUE' as const),
-      lastUpdated: nowIso,
-    };
-  });
+  const billsClone = state.bills.filter((b) => b.id !== billId);
+  const duesClone = state.dues
+    .map((d) => {
+      if (!d.billIds.includes(billId)) return d;
+      const billIds = d.billIds.filter((id) => id !== billId);
+      const invoiceNumbers = d.invoiceNumbers.filter(
+        (invoiceNumber) => invoiceNumber !== targetBill.invoiceNumber
+      );
+      const payments = d.payments.filter((payment) => payment.billId !== billId);
+      const remainingBills = billsClone.filter((bill) => billIds.includes(bill.id));
+      const totalBilled = remainingBills.reduce((sum, bill) => sum + bill.netTotal, 0);
+      const totalPaid = payments.reduce((sum, payment) => sum + payment.amount, 0);
+      const balanceDue = Math.max(0, totalBilled - totalPaid);
+      return {
+        ...d,
+        billIds,
+        invoiceNumbers,
+        payments,
+        totalBilled,
+        totalPaid,
+        balanceDue,
+        status: balanceDue === 0 ? ('SETTLED' as const) : ('ACTIVE_DUE' as const),
+        lastUpdated: nowIso,
+      };
+    })
+    .filter((d) => d.billIds.length > 0);
 
   const auditEntry: AuditLogEntry = {
     id: `audit-${Date.now()}`,
     timestamp: nowIso,
-    action: 'BILL_VOIDED',
-    actor: voidedBy,
-    summary: `Voided ${targetBill.invoiceNumber} (${reason.trim() || 'Customer return'}). Restored stock for ${targetBill.items.length} part(s).`,
+    action: 'BILL_DELETED',
+    actor: deletedBy,
+    summary: `Deleted ${targetBill.invoiceNumber}. Restored stock for ${targetBill.items.length} part(s).`,
     referenceId: billId,
   };
 
@@ -2012,7 +2015,6 @@ export function buildCustomerLedgerSheetData(
   const matchedBills = bills
     .filter(
       (b) =>
-        !b.isVoided &&
         (due.billIds.includes(b.id) || due.invoiceNumbers.includes(b.invoiceNumber))
     )
     .reverse();
@@ -2911,9 +2913,7 @@ export function generateSalesCsv(bills: Bill[]): string {
       )
       .join(' | ');
 
-    const statusLabel = bill.isVoided
-      ? `VOIDED (${bill.voidReason || 'Returned'})`
-      : bill.dueAmount > 0
+    const statusLabel = bill.dueAmount > 0
       ? 'PARTIAL_DUE'
       : 'PAID';
 

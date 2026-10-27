@@ -25,7 +25,27 @@
 }
 
 .print-only-root {
-  display: none;
+  position: absolute;
+  left: -10000px;
+  top: 0;
+  width: 210mm;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.print-only-root .print-invoice-sheet {
+  width: 190mm;
+  min-height: 260mm;
+  height: 260mm;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  border: 1.5px solid #0f172a;
+  border-radius: 6px;
+  padding: 7mm;
+  margin: 0 auto;
+  background: #ffffff;
 }
 
 @media print {
@@ -64,7 +84,10 @@
 
   .print-only-root {
     display: block !important;
+    position: static !important;
+    left: auto !important;
     width: 100% !important;
+    visibility: visible !important;
     background: #ffffff !important;
   }
 

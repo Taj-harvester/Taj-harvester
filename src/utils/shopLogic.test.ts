@@ -34,7 +34,7 @@ import {
   deleteCustomerDueRecord,
   parseXlsxBufferToCsv,
   recordDuePayment,
-  voidBillTransaction,
+  deleteBillTransaction,
 } from './shopLogic.ts';
 import * as XLSX from 'xlsx';
 
@@ -198,7 +198,7 @@ test('calculateBillTotals and executeAtomicBillTransaction support per-part perc
   assert.equal(tots.netTotal, expectedSubtotal - expectedDiscountA);
 });
 
-test('recordDuePayment and voidBillTransaction maintain 100% transaction and due balance accuracy', () => {
+test('recordDuePayment and deleteBillTransaction maintain transaction and due balance accuracy', () => {
   const state = generateInitialShopState();
   const activeDue = state.dues[0];
   const initialBalance = activeDue.balanceDue;
@@ -215,19 +215,16 @@ test('recordDuePayment and voidBillTransaction maintain 100% transaction and due
   assert.equal(updatedDue.balanceDue, initialBalance - 500);
   assert.equal(updatedDue.totalBilled - updatedDue.totalPaid, updatedDue.balanceDue);
 
-  // Also verify voiding a partially paid bill updates totalBilled, totalPaid, and balanceDue accurately
+  // Deleting a partially paid bill restores stock and removes the bill and due record.
   const billWithDue = nextState.bills[0];
   const item = billWithDue.items[0];
   const stockBeforeVoid = nextState.parts.find((p) => p.id === item.partId)!.stockQty;
 
-  const afterVoid = voidBillTransaction(nextState, billWithDue.id, 'Returned part', 'tajharvester000');
-  const stockAfterVoid = afterVoid.parts.find((p) => p.id === item.partId)!.stockQty;
-  assert.equal(stockAfterVoid, stockBeforeVoid + item.quantity);
-
-  const dueAfterVoid = afterVoid.dues.find((d) => d.id === activeDue.id)!;
-  assert.equal(dueAfterVoid.totalBilled - dueAfterVoid.totalPaid, dueAfterVoid.balanceDue);
-  assert.equal(dueAfterVoid.balanceDue, 0);
-  assert.equal(dueAfterVoid.status, 'SETTLED');
+  const afterDelete = deleteBillTransaction(nextState, billWithDue.id, 'tajharvester000');
+  const stockAfterDelete = afterDelete.parts.find((p) => p.id === item.partId)!.stockQty;
+  assert.equal(stockAfterDelete, stockBeforeVoid + item.quantity);
+  assert.equal(afterDelete.bills.some((bill) => bill.id === billWithDue.id), false);
+  assert.equal(afterDelete.dues.some((due) => due.id === activeDue.id), false);
 });
 
 test('generateCsvBackup exports 4 separate CSVs (kubota, yanmar, gm, local) with 5 columns and importPartsFromCsv restores', () => {
@@ -270,6 +267,7 @@ test('multi-staff & owner concurrency: failed bill, duplicate void, or overpayme
       createdBy: 'staff_rahul',
     }
   );
+  assert.equal(staff1Bill.invoiceNumber, 'INV-85-8901');
 
   const snapshotJson = JSON.stringify(stateAfterStaff1);
 
@@ -296,7 +294,7 @@ test('multi-staff & owner concurrency: failed bill, duplicate void, or overpayme
   assert.equal(JSON.stringify(stateAfterStaff1), snapshotJson);
 
   // Staff 2 can now immediately redo the bill with valid quantity (1 unit of part2)
-  const { nextState: stateAfterRedo } = executeAtomicBillTransaction(stateAfterStaff1, {
+  const { nextState: stateAfterRedo, createdBill: staff2Bill } = executeAtomicBillTransaction(stateAfterStaff1, {
     customerName: 'Suresh Das',
     customerPhone: '9832998877',
     customerVillage: 'Jayer, Hooghly',
@@ -309,26 +307,34 @@ test('multi-staff & owner concurrency: failed bill, duplicate void, or overpayme
     paymentMode: 'UPI',
     createdBy: 'staff_amit',
   });
+  assert.equal(staff2Bill.invoiceNumber, 'INV-85-8902');
   assert.equal(
     stateAfterRedo.parts.find((p) => p.id === part1.id)!.stockQty,
     part1.stockQty - 2
   );
   assert.equal(stateAfterRedo.parts.find((p) => p.id === part2.id)!.stockQty, 0);
 
-  // Verify double-voiding the same bill fails cleanly without double-restoring stock
-  const afterFirstVoid = voidBillTransaction(
-    stateAfterRedo,
-    staff1Bill.id,
-    'Customer changed order',
-    'tajharvester000'
-  );
-  const voidSnapshot = JSON.stringify(afterFirstVoid);
+  // Verify deleting the same bill twice fails cleanly without double-restoring stock
+  const afterFirstDelete = deleteBillTransaction(stateAfterRedo, staff1Bill.id, 'tajharvester000');
+  const deleteSnapshot = JSON.stringify(afterFirstDelete);
   assert.throws(
     () =>
-      voidBillTransaction(afterFirstVoid, staff1Bill.id, 'Duplicate void click', 'tajharvester000'),
-    /already voided/
+      deleteBillTransaction(afterFirstDelete, staff1Bill.id, 'tajharvester000'),
+    /Bill not found/
   );
-  assert.equal(JSON.stringify(afterFirstVoid), voidSnapshot);
+  assert.equal(JSON.stringify(afterFirstDelete), deleteSnapshot);
+
+  const { createdBill: reusedInvoiceBill } = executeAtomicBillTransaction(afterFirstDelete, {
+    customerName: 'New Customer',
+    customerPhone: '9832000000',
+    customerVillage: 'Pandua',
+    items: [{ partId: part2.id, quantity: 1, discount: 0 }],
+    discountAmount: 0,
+    paidAmount: 0,
+    paymentMode: 'CASH',
+    createdBy: 'tajharvester000',
+  });
+  assert.equal(reusedInvoiceBill.invoiceNumber, 'INV-85-8901');
 });
 
 test('buildCustomerLedgerSheetData, generateCustomerLedgerCsv, generateAllDuesCsv, and generateSalesCsv produce accurate Excel-style output', () => {

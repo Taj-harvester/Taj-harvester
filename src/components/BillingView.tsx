@@ -14,6 +14,7 @@
 import React, { useMemo, useState } from 'react';
 import {
   CheckCircle2,
+  LoaderCircle,
   Minus,
   Plus,
   Printer,
@@ -28,7 +29,7 @@ import {
   filterAndSearchParts,
   formatBillPartName,
 } from '../utils/shopLogic';
-import { Button, Card, Input, Select } from './ui/primitives';
+import { Button, Card, Dialog, Input, Select } from './ui/primitives';
 
 interface BillingViewProps {
   parts: SparePart[];
@@ -36,6 +37,15 @@ interface BillingViewProps {
   countCheckEnabled?: boolean;
   onToggleCountCheck?: (enabled: boolean) => void;
   onAddToCart: (part: SparePart) => void;
+  onAddPart: (partData: {
+    partSet: PartSet;
+    partNumber: string;
+    nameModel: string;
+    rackLocation: string;
+    stockQty: number;
+    price: number;
+    minStockLevel: number;
+  }) => Promise<SparePart>;
   onUpdateCartQty: (partId: string, quantity: number) => void;
   onUpdateCartUnitPrice: (partId: string, unitPrice: number) => void;
   onUpdateCartDiscount: (partId: string, discountPercent: number) => void;
@@ -66,6 +76,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
   countCheckEnabled = false,
   onToggleCountCheck,
   onAddToCart,
+  onAddPart,
   onUpdateCartQty,
   onUpdateCartUnitPrice,
   onUpdateCartDiscount,
@@ -85,6 +96,15 @@ export const BillingView: React.FC<BillingViewProps> = ({
   const [errorMsg, setErrorMsg] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [lastCompletedBill, setLastCompletedBill] = useState<Bill | null>(null);
+  const [addPartOpen, setAddPartOpen] = useState(false);
+  const [addPartSaving, setAddPartSaving] = useState(false);
+  const [addPartError, setAddPartError] = useState('');
+  const [newPartSet, setNewPartSet] = useState<PartSet>('local');
+  const [newPartNumber, setNewPartNumber] = useState('');
+  const [newPartName, setNewPartName] = useState('');
+  const [newPartRack, setNewPartRack] = useState('Rack L-05');
+  const [newPartStock, setNewPartStock] = useState('20');
+  const [newPartPrice, setNewPartPrice] = useState('');
 
   const matchingParts = useMemo(
     () => filterAndSearchParts(parts, searchQuery, 'ALL', setFilter).slice(0, 35),
@@ -156,6 +176,59 @@ export const BillingView: React.FC<BillingViewProps> = ({
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleSaveMissingPart = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAddPartError('');
+    const isOthers = newPartSet === 'others';
+    const name = newPartName.trim();
+    const code = isOthers ? 'N/A' : newPartNumber.trim().toUpperCase();
+    const priceValue = Number(newPartPrice);
+
+    if (!name) {
+      setAddPartError('Part description is required.');
+      return;
+    }
+    if (!isOthers && !code) {
+      setAddPartError('Part number is required for this part set.');
+      return;
+    }
+    if (!Number.isFinite(priceValue) || priceValue <= 0) {
+      setAddPartError('Enter a selling price greater than ₹0.');
+      return;
+    }
+
+    setAddPartSaving(true);
+    try {
+      const savedPart = await onAddPart({
+        partSet: newPartSet,
+        partNumber: code,
+        nameModel: name,
+        rackLocation: newPartRack.trim() || (isOthers ? 'Bin / Counter' : 'Rack'),
+        stockQty: Math.max(0, Math.round(Number(newPartStock) || 0)),
+        price: Math.round(priceValue * 100) / 100,
+        minStockLevel: 5,
+      });
+      onAddToCart(savedPart);
+      setAddPartOpen(false);
+      setSearchQuery('');
+    } catch (err) {
+      setAddPartError((err as Error).message);
+    } finally {
+      setAddPartSaving(false);
+    }
+  };
+
+  const openAddPart = () => {
+    setAddPartError('');
+    setNewPartSet('local');
+    setNewPartNumber('');
+    setNewPartName('');
+    setNewPartRack('Rack L-05');
+    setNewPartStock('20');
+    setNewPartPrice('');
+    setAddPartOpen(true);
   };
 
   return (
@@ -269,6 +342,10 @@ export const BillingView: React.FC<BillingViewProps> = ({
                 className="pl-10"
               />
             </div>
+            <Button type="button" variant="amber" size="sm" onClick={openAddPart}>
+              <Plus className="w-4 h-4" />
+              Add Missing Part
+            </Button>
           </div>
 
           <div className="divide-y divide-slate-200 max-h-[600px] overflow-y-auto">
@@ -282,21 +359,21 @@ export const BillingView: React.FC<BillingViewProps> = ({
                   className="p-3.5 flex items-center justify-between gap-3 hover:bg-slate-50 transition-colors"
                 >
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 text-xs text-slate-500">
+                    <div className="flex items-center gap-2 text-xs text-slate-700">
                       <span className="font-mono font-bold text-slate-900 whitespace-nowrap">
                         {part.partNumber === 'N/A' || part.partSet === 'others'
                           ? 'No Part No.'
                           : part.partNumber}
                       </span>
                       <span>·</span>
-                      <span className="font-medium text-slate-700">{part.rackLocation}</span>
+                      <span className="font-medium text-slate-800">{part.rackLocation}</span>
                       <span>·</span>
                       <span
                         className={`font-mono tabular-nums font-semibold ${
                           outOfStock
                             ? countCheckEnabled
                               ? 'text-red-600'
-                              : 'text-slate-500'
+                              : 'text-slate-700'
                             : part.stockQty <= part.minStockLevel
                             ? 'text-amber-700'
                             : 'text-emerald-700'
@@ -367,7 +444,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
           )}
 
           {/* Bill Line Items Table: Part No | Description | Count | Single Price | Discount (%) | Total Price */}
-          <div className="border border-slate-200 rounded-lg overflow-hidden">
+          <div className="border border-slate-400 rounded-lg overflow-hidden">
             {cart.length === 0 ? (
               <div className="py-8 px-4 text-center text-xs text-slate-500">
                 <ShoppingCart className="w-6 h-6 text-slate-400 mx-auto mb-2" />
@@ -377,7 +454,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
               <div className="overflow-x-auto max-h-[300px] overflow-y-auto">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
-                    <tr className="border-b border-slate-200 bg-slate-50 text-slate-600">
+                    <tr className="border-b border-slate-400 bg-slate-200 text-slate-900">
                       <th className="py-2.5 px-2 font-semibold whitespace-nowrap">Part No</th>
                       <th className="py-2.5 px-2 font-semibold">Description</th>
                       <th className="py-2.5 px-1.5 font-semibold text-center whitespace-nowrap">Count</th>
@@ -387,7 +464,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
                       <th className="py-2.5 px-2 w-8"></th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-200">
+                  <tbody className="divide-y divide-slate-300">
                     {cart.map((item) => {
                       const isNoCode =
                         !item.partNumber ||
@@ -395,7 +472,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
                         item.partNumber === '—' ||
                         item.partSet === 'others';
                       return (
-                        <tr key={item.partId} className="hover:bg-slate-50/70">
+                        <tr key={item.partId} className="hover:bg-slate-100">
                           <td className="py-2.5 px-2 font-mono font-bold text-slate-900 whitespace-nowrap">
                             {isNoCode ? '—' : item.partNumber}
                           </td>
@@ -646,12 +723,103 @@ export const BillingView: React.FC<BillingViewProps> = ({
               disabled={submitting || cart.length === 0}
               className="w-full"
             >
-              <Printer className="w-5 h-5" />
+              {submitting ? (
+                <LoaderCircle className="w-5 h-5 animate-spin" />
+              ) : (
+                <Printer className="w-5 h-5" />
+              )}
               {submitting ? 'Saving Bill...' : 'Complete Sale & Print Bill'}
             </Button>
           </form>
         </Card>
       </div>
+
+      <Dialog
+        open={addPartOpen}
+        onClose={() => {
+          if (!addPartSaving) setAddPartOpen(false);
+        }}
+        title="Add Missing Part"
+        description="Save this part to inventory and add it directly to the current bill."
+      >
+        <form onSubmit={handleSaveMissingPart} className="space-y-4">
+          {addPartError && (
+            <div role="alert" className="p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700">
+              {addPartError}
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            <label className="text-xs font-semibold text-slate-700">
+              Part Set
+              <Select
+                className="mt-1 w-full"
+                value={newPartSet}
+                onChange={(e) => {
+                  const nextSet = e.target.value as PartSet;
+                  setNewPartSet(nextSet);
+                  if (nextSet === 'others') {
+                    setNewPartNumber('');
+                    setNewPartRack('Bin / Counter');
+                  } else if (newPartSet === 'others') {
+                    setNewPartRack('Rack L-05');
+                  }
+                }}
+                disabled={addPartSaving}
+              >
+                <option value="kubota">Kubota</option>
+                <option value="yanmar">Yanmar</option>
+                <option value="gm">GM</option>
+                <option value="local">Local</option>
+                <option value="others">Others</option>
+              </Select>
+            </label>
+            <label className="text-xs font-semibold text-slate-700">
+              Part Number
+              <Input
+                className="mt-1"
+                value={newPartNumber}
+                onChange={(e) => setNewPartNumber(e.target.value)}
+                placeholder={newPartSet === 'others' ? 'Not required' : 'e.g. AF101-010'}
+                disabled={addPartSaving || newPartSet === 'others'}
+              />
+            </label>
+          </div>
+          <label className="block text-xs font-semibold text-slate-700">
+            Description
+            <Input
+              className="mt-1"
+              value={newPartName}
+              onChange={(e) => setNewPartName(e.target.value)}
+              placeholder="Part name / description"
+              disabled={addPartSaving}
+              autoFocus
+            />
+          </label>
+          <div className="grid grid-cols-3 gap-3">
+            <label className="text-xs font-semibold text-slate-700">
+              Rack / Bin
+              <Input className="mt-1" value={newPartRack} onChange={(e) => setNewPartRack(e.target.value)} disabled={addPartSaving} />
+            </label>
+            <label className="text-xs font-semibold text-slate-700">
+              Stock
+              <Input className="mt-1" type="number" min="0" value={newPartStock} onChange={(e) => setNewPartStock(e.target.value)} disabled={addPartSaving} />
+            </label>
+            <label className="text-xs font-semibold text-slate-700">
+              Selling Price
+              <Input className="mt-1" type="number" min="1" step="0.01" value={newPartPrice} onChange={(e) => setNewPartPrice(e.target.value)} disabled={addPartSaving} />
+            </label>
+          </div>
+          <div className="flex justify-end gap-3 pt-2">
+            <Button type="button" variant="outline" onClick={() => setAddPartOpen(false)} disabled={addPartSaving}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="amber" disabled={addPartSaving}>
+              {addPartSaving ? <LoaderCircle className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+              {addPartSaving ? 'Saving Part...' : 'Save & Add to Bill'}
+            </Button>
+          </div>
+        </form>
+      </Dialog>
     </div>
   );
 };
