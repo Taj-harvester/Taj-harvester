@@ -1,21 +1,20 @@
 import { NextResponse } from 'next/server';
 import { getShopState, saveShopState } from '@/lib/store';
-import { voidBillTransaction } from '@/utils/shopLogic';
+import { deleteBillTransaction } from '@/utils/shopLogic';
 
 export const dynamic = 'force-dynamic';
 
-export async function POST(
+export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
-    const { reason, actor } = await request.json();
+    const { actor } = await request.json().catch(() => ({}));
     const shopState = await getShopState();
-    const nextState = voidBillTransaction(
+    const nextState = deleteBillTransaction(
       shopState,
       id,
-      reason || 'Voided by owner',
       actor || 'tajharvester000',
       new Date().toISOString()
     );

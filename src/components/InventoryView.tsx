@@ -5,6 +5,7 @@ import {
   Download,
   Edit3,
   FileUp,
+  LoaderCircle,
   Plus,
   Search,
   ShoppingCart,
@@ -38,7 +39,7 @@ interface InventoryViewProps {
     stockQty: number;
     price: number;
     minStockLevel: number;
-  }) => Promise<void>;
+  }) => Promise<SparePart>;
   onUpdatePart: (id: string, updates: Partial<SparePart>) => Promise<void>;
   onArchivePart: (id: string) => Promise<void>;
   onImportCsv: (
@@ -93,6 +94,8 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
   const [uploadedRowCount, setUploadedRowCount] = useState<number>(0);
   const [formError, setFormError] = useState('');
   const [feedbackBanner, setFeedbackBanner] = useState('');
+  const [savingPart, setSavingPart] = useState(false);
+  const [importingParts, setImportingParts] = useState(false);
 
   // Form state for the 5 Core Fields (+ DB Set):
   // 1. partNumber
@@ -213,6 +216,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
 
     const cleanCode = isOthers ? 'N/A' : partNumber.trim().toUpperCase();
 
+    setSavingPart(true);
     try {
       if (editingPart) {
         await onUpdatePart(editingPart.id, {
@@ -244,6 +248,8 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
       }
     } catch (err) {
       setFormError((err as Error).message);
+    } finally {
+      setSavingPart(false);
     }
   };
 
@@ -254,6 +260,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
       setFormError('Please choose an Excel (.xlsx / .xls / .csv) file first.');
       return;
     }
+    setImportingParts(true);
     try {
       const res = await onImportCsv(csvTextInput, importTargetSet, {
         forceZeroCount: true,
@@ -272,6 +279,8 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
       setUploadedRowCount(0);
     } catch (err) {
       setFormError((err as Error).message);
+    } finally {
+      setImportingParts(false);
     }
   };
 
@@ -878,11 +887,17 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
                 setAddModalOpen(false);
                 setEditingPart(null);
               }}
+              disabled={savingPart}
             >
               Cancel
             </Button>
-            <Button type="submit" variant="amber">
-              {editingPart ? 'Save Part Changes' : 'Add Part to Inventory'}
+            <Button type="submit" variant="amber" disabled={savingPart}>
+              {savingPart && <LoaderCircle className="w-4 h-4 animate-spin" />}
+              {savingPart
+                ? 'Saving Part...'
+                : editingPart
+                ? 'Save Part Changes'
+                : 'Add Part to Inventory'}
             </Button>
           </div>
         </form>
@@ -977,11 +992,12 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
           </div>
 
           <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-3">
-            <Button type="button" variant="outline" onClick={() => setImportModalOpen(false)}>
+            <Button type="button" variant="outline" onClick={() => setImportModalOpen(false)} disabled={importingParts}>
               Cancel
             </Button>
-            <Button type="submit" variant="amber">
-              Import to Dataset
+            <Button type="submit" variant="amber" disabled={importingParts}>
+              {importingParts && <LoaderCircle className="w-4 h-4 animate-spin" />}
+              {importingParts ? 'Importing Parts...' : 'Import to Dataset'}
             </Button>
           </div>
         </form>

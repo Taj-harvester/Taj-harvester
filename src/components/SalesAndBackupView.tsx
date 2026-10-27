@@ -3,8 +3,9 @@ import {
   CheckCircle2,
   Download,
   FileUp,
+  LoaderCircle,
   Printer,
-  RotateCcw,
+  Trash2,
   Search,
   ShieldCheck,
 } from 'lucide-react';
@@ -22,7 +23,7 @@ interface SalesAndBackupViewProps {
   state: ShopState;
   mongoConnected?: boolean;
   onInspectBill: (bill: Bill) => void;
-  onVoidBill: (billId: string, reason: string) => Promise<void>;
+  onDeleteBill: (billId: string) => Promise<void>;
   onExportBackup: (setFilter?: 'ALL' | PartSet) => void;
   onExportSalesCsv: () => void;
   onExportAllDuesCsv: () => void;
@@ -38,7 +39,7 @@ export const SalesAndBackupView: React.FC<SalesAndBackupViewProps> = ({
   mode,
   state,
   onInspectBill,
-  onVoidBill,
+  onDeleteBill,
   onExportBackup,
   onExportSalesCsv,
   onExportAllDuesCsv,
@@ -46,11 +47,11 @@ export const SalesAndBackupView: React.FC<SalesAndBackupViewProps> = ({
   onTriggerLoader,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [billStatusFilter, setBillStatusFilter] = useState<'ALL' | 'PAID' | 'PARTIAL_DUE' | 'VOIDED'>('ALL');
+  const [billStatusFilter, setBillStatusFilter] = useState<'ALL' | 'PAID' | 'PARTIAL_DUE'>('ALL');
   const [salesPage, setSalesPage] = useState(1);
   const [isLoadingMoreSales, setIsLoadingMoreSales] = useState(false);
-  const [voidingBill, setVoidingBill] = useState<Bill | null>(null);
-  const [voidReason, setVoidReason] = useState('Customer returned part / wrong model ordered');
+  const [deletingBill, setDeletingBill] = useState<Bill | null>(null);
+  const [deletingBillId, setDeletingBillId] = useState<string | null>(null);
   const [restoreText, setRestoreText] = useState('');
   const [restoreTargetSet, setRestoreTargetSet] = useState<PartSet>('kubota');
   const [restoreReplaceSet, setRestoreReplaceSet] = useState(true);
@@ -61,7 +62,7 @@ export const SalesAndBackupView: React.FC<SalesAndBackupViewProps> = ({
 
   const SALES_PAGE_SIZE = 40;
 
-  const validBills = useMemo(() => state.bills.filter((b) => !b.isVoided), [state.bills]);
+  const validBills = state.bills;
 
   const todayBills = useMemo(
     () => validBills.filter((b) => isTodayBill(b.createdAt)),
@@ -91,9 +92,8 @@ export const SalesAndBackupView: React.FC<SalesAndBackupViewProps> = ({
   const filteredBills = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return state.bills.filter((b) => {
-      if (billStatusFilter === 'PAID' && (b.isVoided || b.dueAmount > 0)) return false;
-      if (billStatusFilter === 'PARTIAL_DUE' && (b.isVoided || b.dueAmount === 0)) return false;
-      if (billStatusFilter === 'VOIDED' && !b.isVoided) return false;
+      if (billStatusFilter === 'PAID' && b.dueAmount > 0) return false;
+      if (billStatusFilter === 'PARTIAL_DUE' && b.dueAmount === 0) return false;
       if (!q) return true;
       return (
         b.invoiceNumber.toLowerCase().includes(q) ||
@@ -114,17 +114,20 @@ export const SalesAndBackupView: React.FC<SalesAndBackupViewProps> = ({
   );
   const hasMoreSales = visibleBills.length < filteredBills.length;
 
-  const handleConfirmVoid = async (e: React.FormEvent) => {
+  const handleConfirmDelete = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!voidingBill) return;
+    if (!deletingBill) return;
+    setDeletingBillId(deletingBill.id);
     try {
-      await onVoidBill(voidingBill.id, voidReason);
+      await onDeleteBill(deletingBill.id);
       setStatusMessage(
-        `Soft-voided invoice ${voidingBill.invoiceNumber}. Stock quantities for ${voidingBill.items.length} part(s) have been automatically restored.`
+        `Deleted invoice ${deletingBill.invoiceNumber}. Stock quantities for ${deletingBill.items.length} part(s) have been restored.`
       );
-      setVoidingBill(null);
+      setDeletingBill(null);
     } catch (err) {
       setErrorMessage((err as Error).message);
+    } finally {
+      setDeletingBillId(null);
     }
   };
 
@@ -191,7 +194,7 @@ export const SalesAndBackupView: React.FC<SalesAndBackupViewProps> = ({
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 pb-5 border-b border-slate-200">
           <div>
             <p className="text-xs font-medium text-slate-500">
-              All Customer Bills · Soft-Void Protection (Bills Are Never Hard-Deleted)
+              All Customer Bills
             </p>
             <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight mt-1">
               Sales Register &amp; Revenue Analytics
@@ -275,7 +278,7 @@ export const SalesAndBackupView: React.FC<SalesAndBackupViewProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-1 p-1 bg-slate-100 rounded-lg">
-            {(['ALL', 'PAID', 'PARTIAL_DUE', 'VOIDED'] as const).map((st) => (
+            {(['ALL', 'PAID', 'PARTIAL_DUE'] as const).map((st) => (
               <button
                 key={st}
                 type="button"
@@ -292,7 +295,7 @@ export const SalesAndBackupView: React.FC<SalesAndBackupViewProps> = ({
                   ? 'Fully Paid'
                   : st === 'PARTIAL_DUE'
                   ? 'Partial / Due'
-                  : 'Voided (Soft Deleted)'}
+                  : 'Partial / Due'}
               </button>
             ))}
           </div>
@@ -315,7 +318,7 @@ export const SalesAndBackupView: React.FC<SalesAndBackupViewProps> = ({
                 {visibleBills.map((bill) => (
                   <tr
                     key={bill.id}
-                    className={bill.isVoided ? 'bg-red-50/30 opacity-70' : 'hover:bg-slate-50'}
+                    className="hover:bg-slate-50"
                   >
                     <td className="py-3 px-4">
                       <div className="font-mono text-xs font-bold text-slate-900">
@@ -324,11 +327,6 @@ export const SalesAndBackupView: React.FC<SalesAndBackupViewProps> = ({
                       <div className="text-xs text-slate-500">
                         {formatDateTimeDisplay(bill.createdAt)} · {bill.items.length} Part(s)
                       </div>
-                      {bill.isVoided && (
-                        <div className="text-xs text-red-700 font-semibold mt-0.5">
-                          VOIDED: {bill.voidReason}
-                        </div>
-                      )}
                     </td>
                     <td className="py-3 px-4">
                       <div className="font-medium text-slate-900">{bill.customerName}</div>
@@ -348,7 +346,7 @@ export const SalesAndBackupView: React.FC<SalesAndBackupViewProps> = ({
                       <div className="text-emerald-700 font-semibold">
                         Paid: ₹{bill.paidAmount.toLocaleString('en-IN')} ({bill.paymentMode})
                       </div>
-                      {bill.dueAmount > 0 && !bill.isVoided && (
+                      {bill.dueAmount > 0 && (
                         <div className="text-amber-700 font-bold">
                           Due: ₹{bill.dueAmount.toLocaleString('en-IN')}
                         </div>
@@ -364,17 +362,16 @@ export const SalesAndBackupView: React.FC<SalesAndBackupViewProps> = ({
                           <Printer className="w-3.5 h-3.5" />
                           Print
                         </Button>
-                        {!bill.isVoided && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setVoidingBill(bill)}
-                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                          >
-                            <RotateCcw className="w-3.5 h-3.5" />
-                            Void
-                          </Button>
-                        )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setDeletingBill(bill)}
+                          disabled={deletingBillId === bill.id}
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          Delete
+                        </Button>
                       </div>
                     </td>
                   </tr>
@@ -416,30 +413,28 @@ export const SalesAndBackupView: React.FC<SalesAndBackupViewProps> = ({
           </div>
         </Card>
 
-        {/* Soft-Void Confirmation Dialog */}
+        {/* Delete Confirmation Dialog */}
         <Dialog
-          open={Boolean(voidingBill)}
-          onClose={() => setVoidingBill(null)}
-          title={voidingBill ? `Soft-Void Invoice · ${voidingBill.invoiceNumber}` : 'Void Invoice'}
-          description="Bills are never hard-deleted. Voiding marks the invoice as voided, reverses stock quantities back into inventory, and logs the audit reason."
+          open={Boolean(deletingBill)}
+          onClose={() => {
+            if (!deletingBillId) setDeletingBill(null);
+          }}
+          title={deletingBill ? `Delete Invoice · ${deletingBill.invoiceNumber}` : 'Delete Invoice'}
+          description="This permanently deletes the bill, restores all sold quantities to inventory, removes its due record entries, and makes the invoice number available again."
         >
-          <form onSubmit={handleConfirmVoid} className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Reason for Voiding / Return *
-              </label>
-              <Input
-                required
-                value={voidReason}
-                onChange={(e) => setVoidReason(e.target.value)}
-              />
-            </div>
+          <form onSubmit={handleConfirmDelete} className="space-y-4">
             <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-3">
-              <Button type="button" variant="outline" onClick={() => setVoidingBill(null)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setDeletingBill(null)}
+                disabled={Boolean(deletingBillId)}
+              >
                 Cancel
               </Button>
-              <Button type="submit" variant="destructive">
-                Confirm Soft-Void &amp; Restore Stock
+              <Button type="submit" variant="destructive" disabled={Boolean(deletingBillId)}>
+                {deletingBillId && <LoaderCircle className="w-4 h-4 animate-spin" />}
+                {deletingBillId ? 'Deleting Bill...' : 'Delete Bill &amp; Restore Stock'}
               </Button>
             </div>
           </form>

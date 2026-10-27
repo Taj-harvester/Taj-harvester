@@ -630,7 +630,7 @@ export default function App({ initialTab = 'dashboard' }: { initialTab?: ActiveT
     stockQty: number;
     price: number;
     minStockLevel: number;
-  }) => {
+  }): Promise<SparePart> => {
     beginAsyncLoading();
     try {
       const res = await fetch('/api/parts', {
@@ -646,6 +646,7 @@ export default function App({ initialTab = 'dashboard' }: { initialTab?: ActiveT
         );
       }
       notifyOtherSessions(data.state);
+      return data.part;
     } finally {
       endAsyncLoading();
     }
@@ -971,21 +972,19 @@ export default function App({ initialTab = 'dashboard' }: { initialTab?: ActiveT
     updateBrowserUrl('/customers');
   };
 
-  // Soft-Void Bill (Atomic: fails cleanly if bill was already voided by another session)
-  const handleVoidBill = async (billId: string, reason: string) => {
+  // Delete Bill (Atomic: restores stock and removes the persisted bill)
+  const handleDeleteBill = async (billId: string) => {
     beginAsyncLoading();
     try {
-      const res = await fetch(`/api/bills/${billId}/void`, {
-        method: 'POST',
+      const res = await fetch(`/api/bills/${billId}/delete`, {
+        method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason, actor: currentUser.username }),
+        body: JSON.stringify({ actor: currentUser.username }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         await syncFromServer(false);
-        throw new Error(
-          data.error || 'Could not void invoice. No stock or due changes were made.'
-        );
+        throw new Error(data.error || 'Could not delete invoice. No stock or due changes were made.');
       }
       notifyOtherSessions(data.state);
     } finally {
@@ -1291,6 +1290,7 @@ export default function App({ initialTab = 'dashboard' }: { initialTab?: ActiveT
                 countCheckEnabled={countCheckEnabled}
                 onToggleCountCheck={handleToggleCountCheck}
                 onAddToCart={handleAddToCart}
+                onAddPart={handleAddPart}
                 onUpdateCartQty={handleUpdateCartQty}
                 onUpdateCartUnitPrice={handleUpdateCartUnitPrice}
                 onUpdateCartDiscount={handleUpdateCartDiscount}
@@ -1346,7 +1346,7 @@ export default function App({ initialTab = 'dashboard' }: { initialTab?: ActiveT
                 state={state}
                 mongoConnected={mongoConnected}
                 onInspectBill={(bill) => setInspectedBill(bill)}
-                onVoidBill={handleVoidBill}
+                onDeleteBill={handleDeleteBill}
                 onExportBackup={handleExportBackupCsv}
                 onExportSalesCsv={handleExportSalesCsv}
                 onExportAllDuesCsv={handleExportAllDuesCsv}
@@ -1361,7 +1361,7 @@ export default function App({ initialTab = 'dashboard' }: { initialTab?: ActiveT
                 state={state}
                 mongoConnected={mongoConnected}
                 onInspectBill={(bill) => setInspectedBill(bill)}
-                onVoidBill={handleVoidBill}
+                onDeleteBill={handleDeleteBill}
                 onExportBackup={handleExportBackupCsv}
                 onExportSalesCsv={handleExportSalesCsv}
                 onExportAllDuesCsv={handleExportAllDuesCsv}
@@ -1386,7 +1386,7 @@ export default function App({ initialTab = 'dashboard' }: { initialTab?: ActiveT
       {/* Dedicated Multi-Page Print Root (renders unclipped A4 sheets when window.print() is triggered) */}
       {inspectedBill && (
         <div className="print-only-root" aria-hidden="true">
-          <PrintableBillPages bill={inspectedBill} itemsPerPage={20} isPrintCopy={true} />
+          <PrintableBillPages bill={inspectedBill} isPrintCopy={true} />
         </div>
       )}
 
@@ -1439,7 +1439,7 @@ export default function App({ initialTab = 'dashboard' }: { initialTab?: ActiveT
       {/* On-Screen Modals */}
       <PrintableInvoiceModal
         bill={inspectedBill}
-        autoPrint={true}
+        autoPrint={false}
         onClose={() => setInspectedBill(null)}
       />
 

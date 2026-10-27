@@ -121,10 +121,6 @@ export interface Bill {
   paymentMode: PaymentMode;
   createdBy: string;
   createdAt: string;
-  isVoided: boolean;
-  voidReason?: string;
-  voidedAt?: string;
-  voidedBy?: string;
 }
 
 export interface DuePaymentRecord {
@@ -199,7 +195,7 @@ export interface AuditLogEntry {
   timestamp: string;
   action:
     | 'BILL_CREATED'
-    | 'BILL_VOIDED'
+    | 'BILL_DELETED'
     | 'DUE_PAYMENT_RECEIVED'
     | 'PART_ADDED'
     | 'PART_UPDATED'
