@@ -35,8 +35,20 @@ export const TAJ_HARVESTER_SHOP_INFO = {
   gstin: '19BBKPM0354H1ZK',
 } as const;
 
-const BILL_INVOICE_PREFIX = 'INV-85';
+const BILL_INVOICE_MIDDLE_START = 85;
 const BILL_INVOICE_START = 8901;
+const BILL_INVOICE_BLOCK_SIZE = 100;
+
+/**
+ * Formats the invoice number so the middle segment advances once per
+ * 100-number block in the final segment (INV-85-8901 ... INV-86-9001).
+ */
+export function formatBillInvoiceNumber(sequence: number): string {
+  const safeSequence = Math.max(BILL_INVOICE_START, Math.floor(sequence));
+  const middle = BILL_INVOICE_MIDDLE_START +
+    Math.floor((safeSequence - BILL_INVOICE_START) / BILL_INVOICE_BLOCK_SIZE);
+  return `INV-${middle}-${safeSequence}`;
+}
 
 export interface PaginatedBillPage {
   pageNumber: number;
@@ -1123,7 +1135,7 @@ export function executeAtomicBillTransaction(
 
   const usedInvoiceSequences = new Set(
     state.bills
-      .map((bill) => bill.invoiceNumber.match(/^INV-85-(\d+)$/i))
+      .map((bill) => bill.invoiceNumber.match(/^INV-\d+-(\d+)$/i))
       .filter((match): match is RegExpMatchArray => Boolean(match))
       .map((match) => Number(match[1]))
   );
@@ -1131,7 +1143,7 @@ export function executeAtomicBillTransaction(
   while (usedInvoiceSequences.has(nextInvoiceSequence)) {
     nextInvoiceSequence += 1;
   }
-  const invoiceNumber = `${BILL_INVOICE_PREFIX}-${nextInvoiceSequence}`;
+  const invoiceNumber = formatBillInvoiceNumber(nextInvoiceSequence);
   const createdBill: Bill = {
     id: `bill-${nextInvoiceSequence}-${Date.now()}`,
     invoiceNumber,

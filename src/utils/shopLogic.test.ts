@@ -6,6 +6,7 @@ import {
   calculateBillTotals,
   executeAtomicBillTransaction,
   filterAndSearchParts,
+  formatBillInvoiceNumber,
   formatBillPartName,
   formatDateDotDisplay,
   formatDateShortDisplay,
@@ -44,6 +45,13 @@ test('formatDateTimeDisplay and formatDateShortDisplay produce deterministic IST
   assert.equal(TAJ_HARVESTER_SHOP_INFO.name, 'TAJ HARVESTER');
   assert.equal(TAJ_HARVESTER_SHOP_INFO.address, 'Jayer, Pandua, Hooghly');
   assert.equal(TAJ_HARVESTER_SHOP_INFO.phone, '7872339053 / 8337803644');
+});
+
+test('formatBillInvoiceNumber advances the middle segment every 100 final numbers', () => {
+  assert.equal(formatBillInvoiceNumber(8901), 'INV-85-8901');
+  assert.equal(formatBillInvoiceNumber(9000), 'INV-85-9000');
+  assert.equal(formatBillInvoiceNumber(9001), 'INV-86-9001');
+  assert.equal(formatBillInvoiceNumber(9101), 'INV-87-9101');
 });
 
 test('paginateBillItemsForPrint splits a 30-item customer bill into 3 pages with accurate page subtotals', () => {
