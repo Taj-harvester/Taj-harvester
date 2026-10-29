@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getShopState, saveShopState } from '@/lib/store';
 import type { SparePart } from '@/types/shop';
-import { detectPartSet, PART_SET_META } from '@/utils/shopLogic';
+import { detectPartSet, isPartSetWithoutPartNumber, PART_SET_META, normalizePartDescriptionForDupCheck } from '@/utils/shopLogic';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,22 +23,23 @@ export async function POST(request: Request) {
     }
 
     const resolvedSet = detectPartSet(rawCode, cleanName, partSet);
-    const isOthers =
-      resolvedSet === 'others' ||
+    const isNoPartNumber =
+      isPartSetWithoutPartNumber(resolvedSet) ||
       !rawCode ||
       rawCode === 'N/A' ||
       rawCode === '—' ||
+      rawCode === '--' ||
       rawCode === '-';
 
-    if (!isOthers && !rawCode) {
+    if (!isNoPartNumber && !rawCode) {
       return NextResponse.json(
-        { error: 'Part Number is required for Kubota, Yanmar, GM, and Local parts.' },
+        { error: 'Part Number is required for Kubota, Yanmar, GM, Local, and Bearings parts.' },
         { status: 400 }
       );
     }
 
-    const cleanCode = isOthers ? 'N/A' : rawCode;
-    const cleanRack = String(rackLocation || '').trim() || (isOthers ? 'Bin / Counter' : '');
+    const cleanCode = isNoPartNumber ? '--' : rawCode;
+    const cleanRack = String(rackLocation || '').trim() || (isNoPartNumber ? 'Bin / Counter' : '');
 
     if (!cleanRack) {
       return NextResponse.json(
@@ -47,13 +48,16 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!isOthers) {
+    if (!isNoPartNumber) {
       const existingByCode = shopState.parts.find(
-        (p) => !p.isArchived && p.partNumber.toUpperCase() === cleanCode
+        (p) =>
+          !p.isArchived &&
+          p.partNumber.toUpperCase() === cleanCode &&
+          normalizePartDescriptionForDupCheck(p.nameModel) === normalizePartDescriptionForDupCheck(cleanName)
       );
       if (existingByCode) {
         return NextResponse.json(
-          { error: `Part Number ${cleanCode} already exists in inventory (${existingByCode.nameModel}).` },
+          { error: `Part Number ${cleanCode} with description "${cleanName}" already exists in inventory (${existingByCode.nameModel}).` },
           { status: 409 }
         );
       }

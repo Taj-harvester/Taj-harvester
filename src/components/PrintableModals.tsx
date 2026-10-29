@@ -480,6 +480,7 @@ export const PrintableBillPages: React.FC<BillPagesProps> = ({
                             item.partNumber === 'N/A' ||
                             item.partNumber === '—' ||
                             item.partNumber === '--' ||
+                            item.partSet === 'bearings' ||
                             item.partSet === 'others'
                               ? '—'
                               : item.partNumber}

@@ -311,7 +311,7 @@ export const DealerOrdersView: React.FC<DealerOrdersViewProps> = ({
           </h2>
 
           <div className="flex flex-wrap items-center gap-2">
-            {(['ALL', 'kubota', 'yanmar', 'gm', 'local', 'others'] as const).map((s) => (
+            {(['ALL', 'kubota', 'yanmar', 'gm', 'local', 'bearings', 'others'] as const).map((s) => (
               <button
                 key={s}
                 type="button"
@@ -383,8 +383,8 @@ export const DealerOrdersView: React.FC<DealerOrdersViewProps> = ({
                       </button>
                     </td>
                     <td className="py-3 px-4 font-mono text-xs font-bold text-slate-900">
-                      {part.partNumber === 'N/A' || part.partSet === 'others'
-                        ? '— (No Part No.)'
+                      {part.partSet === 'bearings' || part.partSet === 'others'
+                        ? '--'
                         : part.partNumber}
                     </td>
                     <td className="py-3 px-4 font-medium text-slate-900">

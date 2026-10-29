@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getShopState, saveShopState } from '@/lib/store';
 import type { SparePart } from '@/types/shop';
-import { detectPartSet, PART_SET_META } from '@/utils/shopLogic';
+import { detectPartSet, isPartSetWithoutPartNumber, PART_SET_META, normalizePartDescriptionForDupCheck } from '@/utils/shopLogic';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,31 +35,32 @@ export async function PUT(
       ? detectPartSet(rawCode, nextName, body.partSet)
       : existing.partSet || detectPartSet(rawCode, nextName);
 
-    const isOthers =
-      nextSet === 'others' ||
+    const isNoPartNumber =
+      isPartSetWithoutPartNumber(nextSet) ||
       !rawCode ||
       rawCode === 'N/A' ||
       rawCode === '—' ||
+      rawCode === '--' ||
       rawCode === '-';
 
-    if (!isOthers && !rawCode) {
+    if (!isNoPartNumber && !rawCode) {
       return NextResponse.json({ error: 'Part Number cannot be empty.' }, { status: 400 });
     }
 
-    const nextCode = isOthers ? 'N/A' : rawCode;
+    const nextCode = isNoPartNumber ? '--' : rawCode;
 
-    if (!isOthers && nextCode !== existing.partNumber.toUpperCase()) {
+    if (!isNoPartNumber) {
       const duplicate = shopState.parts.find(
         (p) =>
           p.id !== id &&
           !p.isArchived &&
-          p.partSet === nextSet &&
-          p.partNumber.toUpperCase() === nextCode
+          p.partNumber.toUpperCase() === nextCode &&
+          normalizePartDescriptionForDupCheck(p.nameModel) === normalizePartDescriptionForDupCheck(nextName)
       );
       if (duplicate) {
         return NextResponse.json(
           {
-            error: `Cannot update: Part Number ${nextCode} is already used by "${duplicate.nameModel}".`,
+            error: `Cannot update: Part Number ${nextCode} with description "${nextName}" is already used by "${duplicate.nameModel}".`,
           },
           { status: 409 }
         );

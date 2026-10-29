@@ -725,7 +725,7 @@ export default function App({ initialTab = 'dashboard' }: { initialTab?: ActiveT
     }
   };
 
-  // Exports .xlsx workbook for Kubota, Yanmar, GM, Local, Others, or All
+  // Exports .xlsx workbook for any database set or All
   const handleExportBackupCsv = (setFilter: 'ALL' | PartSet = 'ALL') => {
     pulseUniversalLoader(320);
     const setLabel =
@@ -1073,7 +1073,7 @@ export default function App({ initialTab = 'dashboard' }: { initialTab?: ActiveT
     },
     {
       id: 'backup',
-      label: '5-Set XLSX Backup',
+      label: '6-Set XLSX Backup',
       shortLabel: 'XLSX Backup',
       icon: <ShieldAlert className="w-4 h-4" />,
       ownerOnly: true,
