@@ -36,6 +36,9 @@ import {
   parseXlsxBufferToCsv,
   recordDuePayment,
   deleteBillTransaction,
+  detectPartSet,
+  getDuplicatePartKeySet,
+  getPartDuplicateKey,
 } from './shopLogic.ts';
 import * as XLSX from 'xlsx';
 
@@ -106,7 +109,9 @@ test('generateSeedParts creates 1,040 brand/local parts plus 10 "others" items w
   assert.equal(gmCount, 260);
   assert.equal(localCount, 260);
   assert.equal(othersParts.length, 10);
-  assert.equal(othersParts.every((p) => p.partNumber === 'N/A'), true);
+  assert.equal(othersParts.every((p) => p.partNumber === '--'), true);
+  assert.equal(detectPartSet('BR-0001', 'Bearing 6204'), 'bearings');
+  assert.equal(detectPartSet('6204', 'SKF Bearing 6204'), 'bearings');
 });
 
 test('isOriginalPart and formatBillPartName append (org) strictly to kubota, yanmar, and gm parts', () => {
@@ -114,6 +119,7 @@ test('isOriginalPart and formatBillPartName append (org) strictly to kubota, yan
   assert.equal(isOriginalPart('yanmar'), true);
   assert.equal(isOriginalPart('gm'), true);
   assert.equal(isOriginalPart('local'), false);
+  assert.equal(isOriginalPart('bearings'), false);
   assert.equal(isOriginalPart('others'), false);
 
   assert.equal(
@@ -191,7 +197,7 @@ test('calculateBillTotals and executeAtomicBillTransaction support per-part perc
   assert.equal(createdBill.items[0].discount, expectedDiscountA);
   assert.equal(createdBill.items[0].lineTotal, grossA - expectedDiscountA);
   assert.equal(createdBill.items[1].unitPrice, editedPriceB);
-  assert.equal(createdBill.items[2].partNumber, 'N/A');
+  assert.equal(createdBill.items[2].partNumber, '--');
 
   const expectedSubtotal = grossA + editedPriceB + partOthers.price * 3;
   assert.equal(createdBill.subtotal, expectedSubtotal);
@@ -718,7 +724,7 @@ test('getDuplicatePartNumberSet and filterAndSearchParts with DUPLICATE_PART_NO 
       ...basePart,
       id: 'dup-part-1',
       partNumber: basePart.partNumber,
-      nameModel: `${basePart.nameModel} (Alt Batch)`,
+      nameModel: basePart.nameModel,
     },
     {
       ...basePart,
@@ -737,6 +743,14 @@ test('getDuplicatePartNumberSet and filterAndSearchParts with DUPLICATE_PART_NO 
   ];
 
   assert.equal(normalizePartNumberForDupCheck('N/A', 'others'), '');
+  assert.equal(getPartDuplicateKey({ ...basePart, nameModel: 'Different Description' }), `${basePart.partNumber}::different description`);
+  assert.equal(getDuplicatePartKeySet(partsWithDuplicates, 'ALL').has(getPartDuplicateKey(basePart)), true);
+  assert.equal(
+    getDuplicatePartKeySet(partsWithDuplicates, 'ALL').has(
+      getPartDuplicateKey({ ...basePart, nameModel: 'Different Description' })
+    ),
+    false
+  );
   assert.equal(normalizePartNumberForDupCheck('--', 'kubota'), '');
   assert.equal(normalizePartNumberForDupCheck(' kb-0001 ', 'kubota'), 'KB-0001');
 

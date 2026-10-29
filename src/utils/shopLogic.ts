@@ -3,7 +3,7 @@
  * TAJ HARVESTER — CORE BUSINESS LOGIC & INVENTORY ENGINE
  * ============================================================================
  * Pure, unit-tested business functions for:
- * 1. 4 Database Sets ('kubota', 'yanmar', 'gm', 'local') & (org) label formatting
+ * 1. 6 Database Sets ('kubota', 'yanmar', 'gm', 'local', 'bearings', 'others') & (org) label formatting
  * 2. 5-Column CSV Export & Restore (Part Number, Part Name, Rack No, Count, Selling Price)
  * 3. Per-Part Discount Billing & Atomic Stock Deduction
  * 4. Pending Customer Dues (Khata) & Bill Deletion
@@ -165,6 +165,15 @@ export const PART_SET_META: Record<
     brandPrefix: 'Local',
     isOriginal: false,
   },
+  bearings: {
+    id: 'bearings',
+    label: 'Bearings',
+    shortLabel: 'Bearings',
+    codePrefix: 'BR',
+    rackPrefix: 'B',
+    brandPrefix: 'Bearings',
+    isOriginal: false,
+  },
   others: {
     id: 'others',
     label: 'Others (No Part No.)',
@@ -177,7 +186,7 @@ export const PART_SET_META: Record<
 };
 
 const SET_ORDER: PartSet[] = ['kubota', 'yanmar', 'gm', 'local'];
-const ALL_PART_SETS: PartSet[] = ['kubota', 'yanmar', 'gm', 'local', 'others'];
+const ALL_PART_SETS: PartSet[] = ['kubota', 'yanmar', 'gm', 'local', 'bearings', 'others'];
 
 const SET_MODELS: Record<PartSet, string[]> = {
   kubota: ['Kubota DC-68G', 'Kubota MU5502', 'Kubota MU4501', 'Kubota PRO-888'],
@@ -191,6 +200,7 @@ const SET_MODELS: Record<PartSet, string[]> = {
     'Local Preet 987',
     'Local Sonalika 750',
   ],
+  bearings: ['Bearing 6204', 'Bearing 6205', 'Bearing 6206', 'Bearing 6305'],
   others: ['General Hardware', 'Workshop Consumable'],
 };
 
@@ -220,7 +230,7 @@ const PART_TEMPLATES = [
 ];
 
 /**
- * Determines which of the 5 database sets a part belongs to ('kubota' | 'yanmar' | 'gm' | 'local' | 'others').
+ * Determines which of the 6 database sets a part belongs to.
  */
 export function detectPartSet(
   partNumber: string,
@@ -238,6 +248,12 @@ export function detectPartSet(
   const cleanRack = (rackLocation || '').trim().toUpperCase();
   const combined = `${partNumber || ''} ${partName || ''} ${rackLocation || ''}`.toLowerCase();
 
+  if (
+    combined.includes('bearing') ||
+    cleanCode.startsWith('BR-')
+  ) {
+    return 'bearings';
+  }
   if (
     combined.includes('gm ') ||
     combined.startsWith('gm-') ||
@@ -489,7 +505,7 @@ export function generateSeedParts(count = 1040): SparePart[] {
     parts.push({
       id: `part-oth-${seqNum}`,
       partSet: 'others',
-      partNumber: 'N/A',
+      partNumber: '--',
       nameModel: item.nameModel,
       rackLocation: item.rackLocation,
       stockQty: item.stockQty,
@@ -858,8 +874,12 @@ export function generateInitialShopState(): ShopState {
 /**
  * Normalizes a part number for duplicate detection (ignoring empty, N/A, '--', and 'others' set).
  */
+export function isPartSetWithoutPartNumber(partSet?: PartSet): boolean {
+  return partSet === 'bearings' || partSet === 'others';
+}
+
 export function normalizePartNumberForDupCheck(partNumber?: string, partSet?: PartSet): string {
-  if (!partNumber || partSet === 'others') return '';
+  if (!partNumber || isPartSetWithoutPartNumber(partSet)) return '';
   const trimmed = partNumber.trim().toUpperCase();
   if (
     !trimmed ||
@@ -871,6 +891,31 @@ export function normalizePartNumberForDupCheck(partNumber?: string, partSet?: Pa
     return '';
   }
   return trimmed;
+}
+
+export function normalizePartDescriptionForDupCheck(description?: string): string {
+  return (description || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+export function getPartDuplicateKey(part: Pick<SparePart, 'partNumber' | 'partSet' | 'nameModel'>): string {
+  const code = normalizePartNumberForDupCheck(part.partNumber, part.partSet);
+  if (!code) return '';
+  return `${code}::${normalizePartDescriptionForDupCheck(part.nameModel)}`;
+}
+
+export function getDuplicatePartKeySet(
+  parts: SparePart[],
+  setFilter: 'ALL' | PartSet = 'ALL'
+): Set<string> {
+  const counts = new Map<string, number>();
+  for (const part of parts) {
+    if (part.isArchived) continue;
+    const effectiveSet = part.partSet || detectPartSet(part.partNumber, part.nameModel);
+    if (setFilter !== 'ALL' && effectiveSet !== setFilter) continue;
+    const key = getPartDuplicateKey({ ...part, partSet: effectiveSet });
+    if (key) counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  return new Set([...counts.entries()].filter(([, count]) => count > 1).map(([key]) => key));
 }
 
 /**
@@ -900,7 +945,7 @@ export function getDuplicatePartNumberSet(
 }
 
 /**
- * Pure search and filter function for the 1,000+ spare parts inventory across the 5 sets.
+ * Pure search and filter function for the 1,000+ spare parts inventory across the 6 sets.
  */
 export function filterAndSearchParts(
   parts: SparePart[],
@@ -916,7 +961,7 @@ export function filterAndSearchParts(
   const q = searchQuery.trim().toLowerCase();
   const duplicateCodes =
     stockFilter === 'DUPLICATE_PART_NO'
-      ? getDuplicatePartNumberSet(parts, setFilter)
+      ? getDuplicatePartKeySet(parts, setFilter)
       : null;
 
   const filtered = parts.filter((part) => {
@@ -928,8 +973,8 @@ export function filterAndSearchParts(
     }
 
     if (stockFilter === 'DUPLICATE_PART_NO') {
-      const normCode = normalizePartNumberForDupCheck(part.partNumber, effectiveSet);
-      if (!normCode || !duplicateCodes?.has(normCode)) {
+      const duplicateKey = getPartDuplicateKey({ ...part, partSet: effectiveSet });
+      if (!duplicateKey || !duplicateCodes?.has(duplicateKey)) {
         return false;
       }
     } else if (stockFilter === 'LOW_STOCK' && part.stockQty > part.minStockLevel) {
@@ -1843,7 +1888,7 @@ export function importPartsFromCsv(
           );
 
     const isNoCode =
-      assignedSet === 'others' ||
+      isPartSetWithoutPartNumber(assignedSet) ||
       !rawPartNumber ||
       rawPartNumber === 'N/A' ||
       rawPartNumber === '—' ||
@@ -1851,14 +1896,14 @@ export function importPartsFromCsv(
       rawPartNumber === '--';
 
     const partNumber =
-      assignedSet === 'others'
-        ? 'N/A'
+      isPartSetWithoutPartNumber(assignedSet)
+        ? '--'
         : isNoCode
         ? '--'
         : rawPartNumber;
 
     const rackLocation =
-      row.rackLocation?.trim() || (assignedSet === 'others' ? 'Bin / Counter' : '--');
+      row.rackLocation?.trim() || (isPartSetWithoutPartNumber(assignedSet) ? 'Bin / Counter' : '--');
     const meta = PART_SET_META[assignedSet];
 
     // In Replace mode, never merge or skip rows — add every single Excel row in exact 1-to-1 order.

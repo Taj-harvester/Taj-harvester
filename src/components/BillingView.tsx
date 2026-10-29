@@ -28,6 +28,7 @@ import {
   calculateBillTotals,
   filterAndSearchParts,
   formatBillPartName,
+  isPartSetWithoutPartNumber,
 } from '../utils/shopLogic';
 import { Button, Card, Dialog, Input, Select } from './ui/primitives';
 
@@ -181,16 +182,16 @@ export const BillingView: React.FC<BillingViewProps> = ({
   const handleSaveMissingPart = async (e: React.FormEvent) => {
     e.preventDefault();
     setAddPartError('');
-    const isOthers = newPartSet === 'others';
+    const isNoPartNumber = isPartSetWithoutPartNumber(newPartSet);
     const name = newPartName.trim();
-    const code = isOthers ? 'N/A' : newPartNumber.trim().toUpperCase();
+    const code = isNoPartNumber ? '--' : newPartNumber.trim().toUpperCase();
     const priceValue = Number(newPartPrice);
 
     if (!name) {
       setAddPartError('Part description is required.');
       return;
     }
-    if (!isOthers && !code) {
+    if (!isNoPartNumber && !code) {
       setAddPartError('Part number is required for this part set.');
       return;
     }
@@ -205,7 +206,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
         partSet: newPartSet,
         partNumber: code,
         nameModel: name,
-        rackLocation: newPartRack.trim() || (isOthers ? 'Bin / Counter' : 'Rack'),
+        rackLocation: newPartRack.trim() || (isNoPartNumber ? 'Bin / Counter' : 'Rack'),
         stockQty: Math.max(0, Math.round(Number(newPartStock) || 0)),
         price: Math.round(priceValue * 100) / 100,
         minStockLevel: 5,
@@ -315,7 +316,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
                 Select Parts
               </h2>
               <div className="flex flex-wrap items-center gap-1">
-                {(['ALL', 'kubota', 'yanmar', 'gm', 'local', 'others'] as const).map((s) => (
+                {(['ALL', 'kubota', 'yanmar', 'gm', 'local', 'bearings', 'others'] as const).map((s) => (
                   <button
                     key={s}
                     type="button"
@@ -361,8 +362,8 @@ export const BillingView: React.FC<BillingViewProps> = ({
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 text-xs text-slate-700">
                       <span className="font-mono font-bold text-slate-900 whitespace-nowrap">
-                        {part.partNumber === 'N/A' || part.partSet === 'others'
-                          ? 'No Part No.'
+                        {isPartSetWithoutPartNumber(part.partSet)
+                          ? '--'
                           : part.partNumber}
                       </span>
                       <span>·</span>
@@ -470,11 +471,12 @@ export const BillingView: React.FC<BillingViewProps> = ({
                         !item.partNumber ||
                         item.partNumber === 'N/A' ||
                         item.partNumber === '—' ||
-                        item.partSet === 'others';
+                        item.partNumber === '--' ||
+                        isPartSetWithoutPartNumber(item.partSet);
                       return (
                         <tr key={item.partId} className="hover:bg-slate-100">
                           <td className="py-2.5 px-2 font-mono font-bold text-slate-900 whitespace-nowrap">
-                            {isNoCode ? '—' : item.partNumber}
+                            {isNoCode ? '--' : item.partNumber}
                           </td>
                           <td className="py-2.5 px-2 font-medium text-slate-900 leading-snug">
                             {formatBillPartName(item.nameModel, item.partSet, item.partNumber)}
@@ -757,7 +759,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
                 onChange={(e) => {
                   const nextSet = e.target.value as PartSet;
                   setNewPartSet(nextSet);
-                  if (nextSet === 'others') {
+                  if (isPartSetWithoutPartNumber(nextSet)) {
                     setNewPartNumber('');
                     setNewPartRack('Bin / Counter');
                   } else if (newPartSet === 'others') {
@@ -770,6 +772,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
                 <option value="yanmar">Yanmar</option>
                 <option value="gm">GM</option>
                 <option value="local">Local</option>
+                <option value="bearings">Bearings</option>
                 <option value="others">Others</option>
               </Select>
             </label>
@@ -779,8 +782,8 @@ export const BillingView: React.FC<BillingViewProps> = ({
                 className="mt-1"
                 value={newPartNumber}
                 onChange={(e) => setNewPartNumber(e.target.value)}
-                placeholder={newPartSet === 'others' ? 'Not required' : 'e.g. AF101-010'}
-                disabled={addPartSaving || newPartSet === 'others'}
+                placeholder={isPartSetWithoutPartNumber(newPartSet) ? 'Not required' : 'e.g. AF101-010'}
+                disabled={addPartSaving || isPartSetWithoutPartNumber(newPartSet)}
               />
             </label>
           </div>

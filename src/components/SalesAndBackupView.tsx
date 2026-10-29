@@ -452,7 +452,7 @@ export const SalesAndBackupView: React.FC<SalesAndBackupViewProps> = ({
             Offline Disaster Recovery · Export All 5 Parts Sets, Sales Invoices, and Customer Dues in Excel (.xlsx)
           </p>
           <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight mt-1">
-            Backup &amp; 5-Set XLSX Export / Restore
+            Backup &amp; 6-Set XLSX Export / Restore
           </h1>
         </div>
         <div className="flex flex-wrap items-center gap-2.5">
@@ -539,7 +539,21 @@ export const SalesAndBackupView: React.FC<SalesAndBackupViewProps> = ({
 
         <Card className="p-4 flex flex-col justify-between space-y-3">
           <div>
-            <div className="text-xs font-bold text-slate-600 uppercase">Set 5 · No Part No.</div>
+            <div className="text-xs font-bold text-slate-600 uppercase">Set 5 · Bearings</div>
+            <h3 className="text-base font-bold text-slate-900 mt-0.5">Bearings XLSX</h3>
+            <p className="text-xs text-slate-500 mt-1">
+              Part Number, Description, Rack No, Count, Selling Price
+            </p>
+          </div>
+          <Button variant="outline" onClick={() => onExportBackup('bearings')} className="w-full">
+            <Download className="w-4 h-4" />
+            Export Bearings (.xlsx)
+          </Button>
+        </Card>
+
+        <Card className="p-4 flex flex-col justify-between space-y-3">
+          <div>
+            <div className="text-xs font-bold text-slate-600 uppercase">Set 6 · No Part No.</div>
             <h3 className="text-base font-bold text-slate-900 mt-0.5">Others (Hardware) XLSX</h3>
             <p className="text-xs text-slate-500 mt-1">
               Nut Bolt, Washer, Spring Washer, Gum, Spray, etc.
@@ -583,7 +597,7 @@ export const SalesAndBackupView: React.FC<SalesAndBackupViewProps> = ({
                 Automatic Daily &amp; Manual Backups
               </h2>
               <p className="text-xs text-slate-500">
-                Every day at 06:00 AM, a snapshot is recorded across all 5 sets, sales, and customer dues.
+                Every day at 06:00 AM, a snapshot is recorded across all 6 sets, sales, and customer dues.
               </p>
             </div>
             <ShieldCheck className="w-5 h-5 text-emerald-700 shrink-0" />
@@ -635,7 +649,8 @@ export const SalesAndBackupView: React.FC<SalesAndBackupViewProps> = ({
                 <option value="yanmar">2. Yanmar Original Parts</option>
                 <option value="gm">3. GM Original Parts</option>
                 <option value="local">4. Local Parts List</option>
-                <option value="others">5. Others (No Part Number)</option>
+                <option value="bearings">5. Bearings</option>
+                <option value="others">6. Others (No Part Number)</option>
               </Select>
             </div>
 

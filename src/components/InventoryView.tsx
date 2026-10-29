@@ -15,9 +15,10 @@ import type { PartSet, SparePart } from '../types/shop';
 import {
   detectPartSet,
   filterAndSearchParts,
-  getDuplicatePartNumberSet,
+  getDuplicatePartKeySet,
+  getPartDuplicateKey,
+  isPartSetWithoutPartNumber,
   inspectXlsxWorkbook,
-  normalizePartNumberForDupCheck,
   paginateParts,
   PART_SET_META,
 } from '../utils/shopLogic';
@@ -123,6 +124,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
       yanmar: 0,
       gm: 0,
       local: 0,
+      bearings: 0,
       others: 0,
     };
     for (const p of activeParts) {
@@ -152,13 +154,13 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
     const defaultSet: PartSet = activeSetFilter === 'ALL' ? 'kubota' : activeSetFilter;
     const meta = PART_SET_META[defaultSet];
     const nextCode =
-      defaultSet === 'others'
+      isPartSetWithoutPartNumber(defaultSet)
         ? ''
         : `${meta.codePrefix}-${String(activeParts.length + 1).padStart(4, '0')}`;
     setPartSet(defaultSet);
     setPartNumber(nextCode);
-    setNameModel(defaultSet === 'others' ? '' : `${meta.brandPrefix} - `);
-    setRackLocation(defaultSet === 'others' ? 'Bin / Counter' : `Rack ${meta.rackPrefix}-05`);
+    setNameModel(isPartSetWithoutPartNumber(defaultSet) ? '' : `${meta.brandPrefix} - `);
+    setRackLocation(isPartSetWithoutPartNumber(defaultSet) ? 'Bin / Counter' : `Rack ${meta.rackPrefix}-05`);
     setStockQty('20');
     setPrice('');
     setAddModalOpen(true);
@@ -167,7 +169,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
   const handleSetChangeInModal = (nextSet: PartSet) => {
     setPartSet(nextSet);
     if (!editingPart) {
-      if (nextSet === 'others') {
+      if (isPartSetWithoutPartNumber(nextSet)) {
         setPartNumber('');
         if (nameModel.endsWith(' - ')) {
           setNameModel('');
@@ -189,7 +191,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
     setEditingPart(part);
     const resolvedSet = part.partSet || detectPartSet(part.partNumber, part.nameModel);
     setPartSet(resolvedSet);
-    setPartNumber(part.partNumber === 'N/A' ? '' : part.partNumber);
+    setPartNumber(isPartSetWithoutPartNumber(resolvedSet) ? '' : part.partNumber);
     setNameModel(part.nameModel);
     setRackLocation(part.rackLocation);
     setStockQty(String(part.stockQty));
@@ -200,8 +202,8 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
     e.preventDefault();
     setFormError('');
 
-    const isOthers = partSet === 'others';
-    if (!isOthers && !partNumber.trim()) {
+    const isNoPartNumber = isPartSetWithoutPartNumber(partSet);
+    if (!isNoPartNumber && !partNumber.trim()) {
       setFormError('Part Number is required for Kubota, Yanmar, GM, and Local parts.');
       return;
     }
@@ -214,7 +216,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
       return;
     }
 
-    const cleanCode = isOthers ? 'N/A' : partNumber.trim().toUpperCase();
+    const cleanCode = isNoPartNumber ? '--' : partNumber.trim().toUpperCase();
 
     setSavingPart(true);
     try {
@@ -228,7 +230,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
           price: Math.round(numericPrice * 100) / 100,
         });
         setFeedbackBanner(
-          `Updated [${partSet.toUpperCase()}] ${cleanCode === 'N/A' ? 'No Part No.' : cleanCode} (${finalPartName})`
+          `Updated [${partSet.toUpperCase()}] ${isNoPartNumber ? 'No Part No.' : cleanCode} (${finalPartName})`
         );
         setEditingPart(null);
       } else {
@@ -242,7 +244,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
           minStockLevel: 5,
         });
         setFeedbackBanner(
-          `Added new part ${cleanCode === 'N/A' ? '(No Part No.)' : cleanCode} (${finalPartName}) to ${PART_SET_META[partSet].shortLabel} set`
+          `Added new part ${isNoPartNumber ? '(No Part No.)' : cleanCode} (${finalPartName}) to ${PART_SET_META[partSet].shortLabel} set`
         );
         setAddModalOpen(false);
       }
@@ -320,7 +322,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
   );
 
   const duplicatePartCodes = useMemo(
-    () => getDuplicatePartNumberSet(activeParts, activeSetFilter),
+    () => getDuplicatePartKeySet(activeParts, activeSetFilter),
     [activeParts, activeSetFilter]
   );
 
@@ -329,8 +331,8 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
       activeParts.filter((p) => {
         const s = p.partSet || detectPartSet(p.partNumber, p.nameModel);
         if (activeSetFilter !== 'ALL' && s !== activeSetFilter) return false;
-        const norm = normalizePartNumberForDupCheck(p.partNumber, s);
-        return Boolean(norm && duplicatePartCodes.has(norm));
+        const key = getPartDuplicateKey({ ...p, partSet: s });
+        return Boolean(key && duplicatePartCodes.has(key));
       }).length,
     [activeParts, activeSetFilter, duplicatePartCodes]
   );
@@ -341,7 +343,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 pb-5 border-b border-slate-200">
         <div>
           <p className="text-xs font-medium text-slate-500">
-            5 Database Sets (Kubota · Yanmar · GM · Local · Others) · 5 Core Fields per Part
+            6 Database Sets (Kubota · Yanmar · GM · Local · Bearings · Others) · 5 Core Fields per Part
           </p>
           <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight mt-1">
             Spare Parts Inventory ({activeParts.length.toLocaleString('en-IN')})
@@ -368,12 +370,12 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
         </div>
       </div>
 
-      {/* 3 Original XLSX Exports (Kubota, Yanmar, GM) + Local + Others XLSX Export */}
+      {/* 3 Original XLSX Exports (Kubota, Yanmar, GM) + Local + Bearings + Others XLSX Export */}
       <Card className="p-4 bg-white">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
           <div className="min-w-0">
             <div className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-              Export .XLSX by Database Set (3 Original Sets + Local + Others)
+              Export .XLSX by Database Set (3 Original Sets + Local + Bearings + Others)
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
               5 Columns: Part Number, Description, Rack No, Count, Selling Price
@@ -419,11 +421,20 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
             <Button
               variant="outline"
               size="sm"
+              onClick={() => onExportCsv('bearings')}
+              data-testid="export-bearings-csv"
+            >
+              <Download className="w-3.5 h-3.5 text-slate-700" />
+              5. Bearings (.xlsx)
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => onExportCsv('others')}
               data-testid="export-others-csv"
             >
               <Download className="w-3.5 h-3.5 text-slate-700" />
-              5. Others (.xlsx)
+              6. Others (.xlsx)
             </Button>
           </div>
         </div>
@@ -448,9 +459,9 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
         </div>
       )}
 
-      {/* Database Sets Tabs (Kubota, Yanmar, GM, Local, Others) + Search & Stock Filter Bar */}
+      {/* Database Sets Tabs (Kubota, Yanmar, GM, Local, Bearings, Others) + Search & Stock Filter Bar */}
       <Card className="p-4 space-y-4">
-        <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-7 gap-2">
           <button
             type="button"
             onClick={() => setActiveSetFilter('ALL')}
@@ -466,7 +477,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
             </div>
           </button>
 
-          {(['kubota', 'yanmar', 'gm', 'local', 'others'] as PartSet[]).map((setKey) => {
+          {(['kubota', 'yanmar', 'gm', 'local', 'bearings', 'others'] as PartSet[]).map((setKey) => {
             const meta = PART_SET_META[setKey];
             const isSelected = activeSetFilter === setKey;
             return (
@@ -592,8 +603,8 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
                   const isLow = part.stockQty <= part.minStockLevel;
                   const isOut = part.stockQty === 0;
                   const pSet = part.partSet || detectPartSet(part.partNumber, part.nameModel);
-                  const normCode = normalizePartNumberForDupCheck(part.partNumber, pSet);
-                  const isDuplicatePartNo = Boolean(normCode && duplicatePartCodes.has(normCode));
+                  const duplicateKey = getPartDuplicateKey({ ...part, partSet: pSet });
+                  const isDuplicatePartNo = Boolean(duplicateKey && duplicatePartCodes.has(duplicateKey));
                   return (
                     <tr
                       key={part.id}
@@ -605,8 +616,8 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
                       <td className="py-3 px-4 align-middle whitespace-nowrap">
                         <div className="flex flex-wrap items-center gap-1.5">
                           <span className="font-mono text-xs font-bold text-slate-900">
-                            {part.partNumber === 'N/A' || pSet === 'others'
-                              ? '— (No Part No.)'
+                            {isPartSetWithoutPartNumber(pSet)
+                              ? '-- (No Part No.)'
                               : part.partNumber}
                           </span>
                           {isDuplicatePartNo && (
@@ -775,10 +786,10 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
         }}
         title={
           editingPart
-            ? `Edit Part · ${editingPart.partNumber === 'N/A' ? editingPart.nameModel : editingPart.partNumber}`
+            ? `Edit Part · ${isPartSetWithoutPartNumber(editingPart.partSet) ? editingPart.nameModel : editingPart.partNumber}`
             : 'Add Spare Part (5 Details)'
         }
-        description="Select the database set (Kubota, Yanmar, GM, Local, or Others) and enter the part details."
+        description="Select the database set (Kubota, Yanmar, GM, Local, Bearings, or Others) and enter the part details."
       >
         <form onSubmit={handleSavePart} className="space-y-4">
           {formError && (
@@ -789,7 +800,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
 
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">
-              Database Set (Kubota / Yanmar / GM / Local / Others) *
+              Database Set (Kubota / Yanmar / GM / Local / Bearings / Others) *
             </label>
             <Select
               value={partSet}
@@ -800,23 +811,24 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
               <option value="yanmar">2. Yanmar — Original Parts</option>
               <option value="gm">3. GM — Original Parts</option>
               <option value="local">4. Local — All Other Different Parts</option>
-              <option value="others">5. Others — No Part Number (Nut Bolt, Washer, Gum, Spray, etc.)</option>
+              <option value="bearings">5. Bearings — No Part Number</option>
+              <option value="others">6. Others — No Part Number (Nut Bolt, Washer, Gum, Spray, etc.)</option>
             </Select>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                1. Part Number {partSet === 'others' ? '(Not Required)' : '*'}
+                1. Part Number {isPartSetWithoutPartNumber(partSet) ? '(Not Required)' : '*'}
               </label>
               <Input
-                required={partSet !== 'others'}
-                disabled={partSet === 'others'}
-                value={partSet === 'others' ? '' : partNumber}
+                required={!isPartSetWithoutPartNumber(partSet)}
+                disabled={isPartSetWithoutPartNumber(partSet)}
+                value={isPartSetWithoutPartNumber(partSet) ? '' : partNumber}
                 onChange={(e) => setPartNumber(e.target.value)}
                 placeholder={
-                  partSet === 'others'
-                    ? 'No Part Number (Others)'
+                  isPartSetWithoutPartNumber(partSet)
+                    ? 'No Part Number (-- for Bearings/Others)'
                     : 'e.g. KB-0105'
                 }
               />
@@ -829,7 +841,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
                 required
                 value={rackLocation}
                 onChange={(e) => setRackLocation(e.target.value)}
-                placeholder={partSet === 'others' ? 'e.g. Bin O-01 (Counter)' : 'e.g. Rack K-04'}
+                placeholder={isPartSetWithoutPartNumber(partSet) ? 'e.g. Bin O-01 (Counter)' : 'e.g. Rack K-04'}
               />
             </div>
           </div>
@@ -843,7 +855,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
               value={nameModel}
               onChange={(e) => setNameModel(e.target.value)}
               placeholder={
-                partSet === 'others'
+                isPartSetWithoutPartNumber(partSet)
                   ? 'e.g. Nut Bolt, Plain Washer, Spring Washer, Gasket Gum, Rosting Spray'
                   : 'e.g. Kubota DC-68G - Hydraulic Gear Pump'
               }
@@ -931,7 +943,8 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
               <option value="yanmar">2. Yanmar Original Parts</option>
               <option value="gm">3. GM Original Parts</option>
               <option value="local">4. Local Parts List</option>
-              <option value="others">5. Others (No Part Number)</option>
+              <option value="bearings">5. Bearings</option>
+              <option value="others">6. Others (No Part Number)</option>
             </Select>
           </div>
 

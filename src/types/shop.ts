@@ -4,7 +4,7 @@
  * ============================================================================
  * Defines data structures for:
  * - Role-based Authentication (Owner from .env + Owner-managed Staff accounts)
- * - 4 Spare Parts Database Sets ('kubota', 'yanmar', 'gm', 'local')
+ * - 6 Spare Parts Database Sets ('kubota', 'yanmar', 'gm', 'local', 'bearings', 'others')
  * - 5-Field Spare Parts Inventory (partNumber, nameModel, rackLocation, stockQty, price)
  * - POS Customer Billing with per-part discount, Address, Cash/UPI only, and (org) badge
  * - Customer Pending Dues (Khata) & Simple Custom Dealer Order Lists
@@ -46,18 +46,19 @@ export interface StaffAccount {
 }
 
 /**
- * 5 Database Sets requested by user:
+ * 6 Database Sets requested by user:
  * - 'kubota': Kubota original parts -> prints (org) on bill
  * - 'yanmar': Yanmar original parts -> prints (org) on bill
  * - 'gm': GM original parts -> prints (org) on bill
  * - 'local': All other different local parts -> no (org) suffix
+ * - 'bearings': Bearing parts -> no (org) suffix
  * - 'others': Hardware & general items with no part number (Nut Bolt, Washer, Spring Washer, Gum, Rust Spray, etc.)
  */
-export type PartSet = 'kubota' | 'yanmar' | 'gm' | 'local' | 'others';
+export type PartSet = 'kubota' | 'yanmar' | 'gm' | 'local' | 'bearings' | 'others';
 
 /**
  * Every part holds the 5 core details:
- * 1. partNumber (Part Number, or 'N/A' for 'others')
+ * 1. partNumber (Part Number, or '--' for 'bearings' and 'others')
  * 2. nameModel (Part Name holding "BrandName - PartName")
  * 3. rackLocation (Rack No - for inventory only, never shown on customer bill)
  * 4. stockQty (Count)
