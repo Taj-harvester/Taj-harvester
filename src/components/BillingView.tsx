@@ -675,7 +675,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
           </div>
 
           {/* Customer Details (Name, Phone, Address) & Final Price Form */}
-          <form onSubmit={handleSubmitBill} className="space-y-4 pt-1">
+          <form onSubmit={handleSubmitBill} autoComplete="off" className="space-y-4 pt-1">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="relative">
                 <label
@@ -687,6 +687,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
                 <Input
                   id="pos-customer-name"
                   required
+                  autoComplete="off"
                   value={customerName}
                   onFocus={() => setCustomerSuggestionsOpen(true)}
                   onBlur={() => window.setTimeout(() => setCustomerSuggestionsOpen(false), 150)}
@@ -724,6 +725,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
                 </label>
                 <Input
                   id="pos-customer-phone"
+                  autoComplete="off"
                   value={customerPhone}
                   onFocus={() => setCustomerSuggestionsOpen(true)}
                   onChange={(e) => {
@@ -742,6 +744,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
                 </label>
                 <Input
                   id="pos-customer-address"
+                  autoComplete="off"
                   value={customerAddress}
                   onFocus={() => setCustomerSuggestionsOpen(true)}
                   onChange={(e) => {

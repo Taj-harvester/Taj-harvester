@@ -35,19 +35,19 @@ export const TAJ_HARVESTER_SHOP_INFO = {
   gstin: '19BBKPM0354H1ZK',
 } as const;
 
-const BILL_INVOICE_MIDDLE_START = 85;
-const BILL_INVOICE_START = 8901;
+const BILL_INVOICE_BLOCK_START = 1;
+const BILL_INVOICE_START = 9401;
 const BILL_INVOICE_BLOCK_SIZE = 100;
 
 /**
- * Formats the invoice number so the middle segment advances once per
- * 100-number block in the final segment (INV-85-8901 ... INV-86-9001).
+ * Formats the invoice number so the C-number advances once per 100-number
+ * block in the final segment (INV-C1-9401 ... INV-C2-9501).
  */
 export function formatBillInvoiceNumber(sequence: number): string {
   const safeSequence = Math.max(BILL_INVOICE_START, Math.floor(sequence));
-  const middle = BILL_INVOICE_MIDDLE_START +
+  const block = BILL_INVOICE_BLOCK_START +
     Math.floor((safeSequence - BILL_INVOICE_START) / BILL_INVOICE_BLOCK_SIZE);
-  return `INV-${middle}-${safeSequence}`;
+  return `INV-C${block}-${safeSequence}`;
 }
 
 export interface PaginatedBillPage {
@@ -958,7 +958,7 @@ export function filterAndSearchParts(
     | 'DUPLICATE_PART_NO' = 'ALL',
   setFilter: 'ALL' | PartSet = 'ALL'
 ): SparePart[] {
-  const q = searchQuery.trim().toLowerCase();
+  const q = searchQuery.toLowerCase().replace(/\s+/g, '');
   const duplicateCodes =
     stockFilter === 'DUPLICATE_PART_NO'
       ? getDuplicatePartKeySet(parts, setFilter)
@@ -987,11 +987,16 @@ export function filterAndSearchParts(
 
     if (!q) return true;
 
-    return (
-      part.partNumber.toLowerCase().includes(q) ||
-      part.nameModel.toLowerCase().includes(q) ||
-      part.rackLocation.toLowerCase().includes(q)
-    );
+    const searchableText = [
+      part.partNumber,
+      part.nameModel,
+      part.rackLocation,
+    ]
+      .join(' ')
+      .toLowerCase()
+      .replace(/\s+/g, '');
+
+    return searchableText.includes(q);
   });
 
   if (stockFilter === 'DUPLICATE_PART_NO') {
@@ -1180,7 +1185,7 @@ export function executeAtomicBillTransaction(
 
   const usedInvoiceSequences = new Set(
     state.bills
-      .map((bill) => bill.invoiceNumber.match(/^INV-\d+-(\d+)$/i))
+      .map((bill) => bill.invoiceNumber.match(/^INV-(?:\d+|C\d+)-(\d+)$/i))
       .filter((match): match is RegExpMatchArray => Boolean(match))
       .map((match) => Number(match[1]))
   );
