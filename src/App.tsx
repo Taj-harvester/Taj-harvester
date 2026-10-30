@@ -1286,6 +1286,8 @@ export default function App({ initialTab = 'dashboard' }: { initialTab?: ActiveT
             {activeTab === 'billing' && (
               <BillingView
                 parts={state.parts}
+                bills={state.bills}
+                dues={state.dues}
                 cart={cart}
                 countCheckEnabled={countCheckEnabled}
                 onToggleCountCheck={handleToggleCountCheck}

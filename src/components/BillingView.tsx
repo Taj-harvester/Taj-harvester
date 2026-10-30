@@ -22,7 +22,7 @@ import {
   ShoppingCart,
   Trash2,
 } from 'lucide-react';
-import type { Bill, BillItem, PartSet, PaymentMode, SparePart } from '../types/shop';
+import type { Bill, BillItem, PartSet, PaymentMode, PendingDue, SparePart } from '../types/shop';
 import {
   TAJ_HARVESTER_SHOP_INFO,
   calculateBillTotals,
@@ -34,6 +34,8 @@ import { Button, Card, Dialog, Input, Select } from './ui/primitives';
 
 interface BillingViewProps {
   parts: SparePart[];
+  bills: Bill[];
+  dues: PendingDue[];
   cart: BillItem[];
   countCheckEnabled?: boolean;
   onToggleCountCheck?: (enabled: boolean) => void;
@@ -73,6 +75,8 @@ interface BillingViewProps {
 
 export const BillingView: React.FC<BillingViewProps> = ({
   parts,
+  bills,
+  dues,
   cart,
   countCheckEnabled = false,
   onToggleCountCheck,
@@ -91,6 +95,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerAddress, setCustomerAddress] = useState('');
+  const [customerSuggestionsOpen, setCustomerSuggestionsOpen] = useState(false);
   const [paidInput, setPaidInput] = useState<string>('');
   const [isPaidManuallyEdited, setIsPaidManuallyEdited] = useState(false);
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('CASH');
@@ -107,10 +112,93 @@ export const BillingView: React.FC<BillingViewProps> = ({
   const [newPartStock, setNewPartStock] = useState('20');
   const [newPartPrice, setNewPartPrice] = useState('');
 
+  const normalizeCustomerLookup = (value: string) =>
+    value.toLocaleLowerCase().replace(/\s+/g, '');
+
   const matchingParts = useMemo(
     () => filterAndSearchParts(parts, searchQuery, 'ALL', setFilter).slice(0, 35),
     [parts, searchQuery, setFilter]
   );
+
+  const customerDirectory = useMemo(() => {
+    const records = [
+      ...bills.map((bill) => ({
+        customerName: bill.customerName,
+        customerPhone: bill.customerPhone,
+        customerVillage: bill.customerVillage,
+        updatedAt: bill.createdAt,
+      })),
+      ...dues.map((due) => ({
+        customerName: due.customerName,
+        customerPhone: due.customerPhone,
+        customerVillage: due.customerVillage,
+        updatedAt: due.lastUpdated,
+      })),
+    ];
+    const unique = new Map<string, (typeof records)[number]>();
+    for (const record of records) {
+      const name = record.customerName.trim();
+      if (!name) continue;
+      const key = [
+        normalizeCustomerLookup(name),
+        normalizeCustomerLookup(record.customerPhone),
+        normalizeCustomerLookup(record.customerVillage),
+      ].join('|');
+      const previous = unique.get(key);
+      if (!previous || record.updatedAt > previous.updatedAt) {
+        unique.set(key, { ...record, customerName: name });
+      }
+    }
+    return [...unique.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  }, [bills, dues]);
+
+  const customerSuggestions = useMemo(() => {
+    const query = normalizeCustomerLookup(customerName);
+    const phoneQuery = normalizeCustomerLookup(customerPhone);
+    const addressQuery = normalizeCustomerLookup(customerAddress);
+    if (!query && !phoneQuery && !addressQuery) return customerDirectory.slice(0, 8);
+    return customerDirectory
+      .filter((record) => {
+        const fields = [
+          normalizeCustomerLookup(record.customerName),
+          normalizeCustomerLookup(record.customerPhone),
+          normalizeCustomerLookup(record.customerVillage),
+        ];
+        return fields.some(
+          (field) =>
+            (query && field.includes(query)) ||
+            (phoneQuery && field.includes(phoneQuery)) ||
+            (addressQuery && field.includes(addressQuery))
+        );
+      })
+      .slice(0, 8);
+  }, [customerAddress, customerDirectory, customerName, customerPhone]);
+
+  const fillCustomerDetails = (record: {
+    customerName: string;
+    customerPhone: string;
+    customerVillage: string;
+  }) => {
+    setCustomerName(record.customerName);
+    setCustomerPhone(record.customerPhone);
+    setCustomerAddress(record.customerVillage);
+    setCustomerSuggestionsOpen(false);
+  };
+
+  const tryAutofillCustomer = (field: 'name' | 'phone' | 'address', value: string) => {
+    const normalized = normalizeCustomerLookup(value);
+    if (!normalized) return;
+    const matches = customerDirectory.filter((record) => {
+      const candidate =
+        field === 'name'
+          ? record.customerName
+          : field === 'phone'
+            ? record.customerPhone
+            : record.customerVillage;
+      return normalizeCustomerLookup(candidate) === normalized;
+    });
+    if (matches.length === 1) fillCustomerDetails(matches[0]);
+  };
 
   // Calculate subtotal and sum of per-part discounts
   const preliminaryTotals = useMemo(
@@ -236,7 +324,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
     <div className="space-y-6">
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-5 border-b border-slate-200">
-        <div>
+        <div className="relative">
           <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
             Customer Bill
           </h1>
@@ -416,7 +504,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
         {/* RIGHT COLUMN: Customer Bill */}
         <Card className="lg:col-span-7 p-5 space-y-5">
           <div className="flex items-start justify-between pb-3 border-b border-slate-200">
-            <div>
+            <div className="relative">
               <h2 className="text-base font-bold text-slate-900">
                 {TAJ_HARVESTER_SHOP_INFO.name} — Customer Bill
               </h2>
@@ -589,7 +677,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
           {/* Customer Details (Name, Phone, Address) & Final Price Form */}
           <form onSubmit={handleSubmitBill} className="space-y-4 pt-1">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div>
+              <div className="relative">
                 <label
                   htmlFor="pos-customer-name"
                   className="block text-xs font-semibold text-slate-700 mb-1"
@@ -600,11 +688,34 @@ export const BillingView: React.FC<BillingViewProps> = ({
                   id="pos-customer-name"
                   required
                   value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
+                  onFocus={() => setCustomerSuggestionsOpen(true)}
+                  onBlur={() => window.setTimeout(() => setCustomerSuggestionsOpen(false), 150)}
+                  onChange={(e) => {
+                    setCustomerName(e.target.value);
+                    tryAutofillCustomer('name', e.target.value);
+                  }}
                   placeholder="Customer Name"
                 />
+                {customerSuggestionsOpen && customerSuggestions.length > 0 && (
+                  <div className="absolute left-0 right-0 top-full z-40 mt-1 max-h-56 overflow-y-auto rounded-lg border border-slate-200 bg-white p-1 shadow-xl ring-1 ring-slate-950/5">
+                    {customerSuggestions.map((record) => (
+                      <button
+                        key={`${record.customerName}-${record.customerPhone}-${record.customerVillage}`}
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => fillCustomerDetails(record)}
+                        className="block w-full rounded-md border-b border-slate-100 px-3 py-2.5 text-left last:border-0 hover:bg-amber-50 focus:bg-amber-50 focus:outline-none"
+                      >
+                        <div className="text-xs font-semibold text-slate-900">{record.customerName}</div>
+                        <div className="mt-0.5 text-[11px] text-slate-500">
+                          {record.customerPhone || 'No phone'} · {record.customerVillage || 'No address'}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-              <div>
+              <div className="relative">
                 <label
                   htmlFor="pos-customer-phone"
                   className="block text-xs font-semibold text-slate-700 mb-1"
@@ -614,11 +725,15 @@ export const BillingView: React.FC<BillingViewProps> = ({
                 <Input
                   id="pos-customer-phone"
                   value={customerPhone}
-                  onChange={(e) => setCustomerPhone(e.target.value)}
+                  onFocus={() => setCustomerSuggestionsOpen(true)}
+                  onChange={(e) => {
+                    setCustomerPhone(e.target.value);
+                    tryAutofillCustomer('phone', e.target.value);
+                  }}
                   placeholder="Phone Number"
                 />
               </div>
-              <div>
+              <div className="relative">
                 <label
                   htmlFor="pos-customer-address"
                   className="block text-xs font-semibold text-slate-700 mb-1"
@@ -628,7 +743,11 @@ export const BillingView: React.FC<BillingViewProps> = ({
                 <Input
                   id="pos-customer-address"
                   value={customerAddress}
-                  onChange={(e) => setCustomerAddress(e.target.value)}
+                  onFocus={() => setCustomerSuggestionsOpen(true)}
+                  onChange={(e) => {
+                    setCustomerAddress(e.target.value);
+                    tryAutofillCustomer('address', e.target.value);
+                  }}
                   placeholder="Village / City Address"
                 />
               </div>
