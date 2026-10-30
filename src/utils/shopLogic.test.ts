@@ -50,11 +50,11 @@ test('formatDateTimeDisplay and formatDateShortDisplay produce deterministic IST
   assert.equal(TAJ_HARVESTER_SHOP_INFO.phone, '7872339053 / 8337803644');
 });
 
-test('formatBillInvoiceNumber advances the middle segment every 100 final numbers', () => {
-  assert.equal(formatBillInvoiceNumber(8901), 'INV-85-8901');
-  assert.equal(formatBillInvoiceNumber(9000), 'INV-85-9000');
-  assert.equal(formatBillInvoiceNumber(9001), 'INV-86-9001');
-  assert.equal(formatBillInvoiceNumber(9101), 'INV-87-9101');
+test('formatBillInvoiceNumber advances the C-number every 100 final numbers', () => {
+  assert.equal(formatBillInvoiceNumber(9401), 'INV-C1-9401');
+  assert.equal(formatBillInvoiceNumber(9500), 'INV-C1-9500');
+  assert.equal(formatBillInvoiceNumber(9501), 'INV-C2-9501');
+  assert.equal(formatBillInvoiceNumber(9601), 'INV-C3-9601');
 });
 
 test('paginateBillItemsForPrint splits a 30-item customer bill into 3 pages with accurate page subtotals', () => {
@@ -151,6 +151,11 @@ test('filterAndSearchParts and paginateParts filter by PartSet and search query'
 
   const othersOnly = filterAndSearchParts(parts, '', 'ALL', 'others');
   assert.equal(othersOnly.length, 10);
+
+  const spacedSearch = filterAndSearchParts(parts, 'Kubota DC-68G', 'ALL', 'kubota');
+  assert.ok(spacedSearch.length > 0);
+  const compactSearch = filterAndSearchParts(parts, 'KubotaDC-68G', 'ALL', 'kubota');
+  assert.ok(compactSearch.length > 0);
 
   const page1 = paginateParts(kubotaOnly, 1, 40);
   assert.equal(page1.items.length, 40);
@@ -281,7 +286,7 @@ test('multi-staff & owner concurrency: failed bill, duplicate void, or overpayme
       createdBy: 'staff_rahul',
     }
   );
-  assert.equal(staff1Bill.invoiceNumber, 'INV-85-8901');
+  assert.equal(staff1Bill.invoiceNumber, 'INV-C1-9401');
 
   const snapshotJson = JSON.stringify(stateAfterStaff1);
 
@@ -321,7 +326,7 @@ test('multi-staff & owner concurrency: failed bill, duplicate void, or overpayme
     paymentMode: 'UPI',
     createdBy: 'staff_amit',
   });
-  assert.equal(staff2Bill.invoiceNumber, 'INV-85-8902');
+  assert.equal(staff2Bill.invoiceNumber, 'INV-C1-9402');
   assert.equal(
     stateAfterRedo.parts.find((p) => p.id === part1.id)!.stockQty,
     part1.stockQty - 2
@@ -348,7 +353,7 @@ test('multi-staff & owner concurrency: failed bill, duplicate void, or overpayme
     paymentMode: 'CASH',
     createdBy: 'tajharvester000',
   });
-  assert.equal(reusedInvoiceBill.invoiceNumber, 'INV-85-8901');
+  assert.equal(reusedInvoiceBill.invoiceNumber, 'INV-C1-9401');
 });
 
 test('buildCustomerLedgerSheetData, generateCustomerLedgerCsv, generateAllDuesCsv, and generateSalesCsv produce accurate Excel-style output', () => {
