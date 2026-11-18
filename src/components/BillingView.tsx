@@ -66,6 +66,7 @@ interface BillingViewProps {
       unitPrice?: number;
     }[];
     discountAmount: number;
+    extraDiscountAmount?: number;
     paidAmount: number;
     paymentMode: PaymentMode;
     ignoreStockCount?: boolean;
@@ -95,6 +96,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerAddress, setCustomerAddress] = useState('');
+  const [additionalDiscountInput, setAdditionalDiscountInput] = useState('');
   const [customerSuggestionsOpen, setCustomerSuggestionsOpen] = useState(false);
   const [paidInput, setPaidInput] = useState<string>('');
   const [isPaidManuallyEdited, setIsPaidManuallyEdited] = useState(false);
@@ -114,6 +116,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
 
   const normalizeCustomerLookup = (value: string) =>
     value.toLocaleLowerCase().replace(/\s+/g, '');
+  const normalizeCustomerPhone = (value: string) => value.replace(/\D/g, '');
 
   const matchingParts = useMemo(
     () => filterAndSearchParts(parts, searchQuery, 'ALL', setFilter).slice(0, 35),
@@ -179,40 +182,41 @@ export const BillingView: React.FC<BillingViewProps> = ({
     customerPhone: string;
     customerVillage: string;
   }) => {
-    setCustomerName(record.customerName);
+    setCustomerName(record.customerName.toLocaleUpperCase());
     setCustomerPhone(record.customerPhone);
     setCustomerAddress(record.customerVillage);
     setCustomerSuggestionsOpen(false);
   };
 
-  const tryAutofillCustomer = (field: 'name' | 'phone' | 'address', value: string) => {
-    const normalized = normalizeCustomerLookup(value);
+  const tryAutofillCustomerByPhone = (value: string) => {
+    const normalized = normalizeCustomerPhone(value);
     if (!normalized) return;
     const matches = customerDirectory.filter((record) => {
-      const candidate =
-        field === 'name'
-          ? record.customerName
-          : field === 'phone'
-            ? record.customerPhone
-            : record.customerVillage;
-      return normalizeCustomerLookup(candidate) === normalized;
+      const candidate = normalizeCustomerPhone(record.customerPhone);
+      return candidate && candidate === normalized;
     });
     if (matches.length === 1) fillCustomerDetails(matches[0]);
   };
 
-  // Calculate subtotal and sum of per-part discounts
-  const preliminaryTotals = useMemo(
-    () => calculateBillTotals(cart, 0, 0),
-    [cart]
+  const additionalDiscountAmount = Math.max(
+    0,
+    Math.round(Number(additionalDiscountInput) || 0)
   );
+
+  // Calculate subtotal and discounts before resolving the paid amount.
+  const preliminaryTotals = useMemo(
+    () => calculateBillTotals(cart, additionalDiscountAmount, 0),
+    [additionalDiscountAmount, cart]
+  );
+  const partDiscountTotals = useMemo(() => calculateBillTotals(cart, 0, 0), [cart]);
 
   const effectivePaidAmount = isPaidManuallyEdited
     ? Math.max(0, Math.min(preliminaryTotals.netTotal, Number(paidInput) || 0))
     : preliminaryTotals.netTotal;
 
   const totals = useMemo(
-    () => calculateBillTotals(cart, 0, effectivePaidAmount),
-    [cart, effectivePaidAmount]
+    () => calculateBillTotals(cart, additionalDiscountAmount, effectivePaidAmount),
+    [additionalDiscountAmount, cart, effectivePaidAmount]
   );
 
   const handleSubmitBill = async (e: React.FormEvent) => {
@@ -248,6 +252,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
           unitPrice: i.unitPrice,
         })),
         discountAmount: totals.discountAmount,
+        extraDiscountAmount: additionalDiscountAmount,
         paidAmount: totals.paidAmount,
         paymentMode,
         ignoreStockCount: !countCheckEnabled,
@@ -257,6 +262,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
       setCustomerName('');
       setCustomerPhone('');
       setCustomerAddress('');
+      setAdditionalDiscountInput('');
       setPaidInput('');
       setIsPaidManuallyEdited(false);
       onPrintBill(createdBill);
@@ -515,7 +521,10 @@ export const BillingView: React.FC<BillingViewProps> = ({
             {cart.length > 0 && (
               <button
                 type="button"
-                onClick={onClearCart}
+                onClick={() => {
+                  onClearCart();
+                  setAdditionalDiscountInput('');
+                }}
                 className="text-xs font-semibold text-red-600 hover:text-red-700 cursor-pointer shrink-0"
               >
                 Clear Bill
@@ -607,7 +616,9 @@ export const BillingView: React.FC<BillingViewProps> = ({
                               type="number"
                               min="1"
                               aria-label={`Single price for ${item.nameModel}`}
-                              value={item.unitPrice > 0 ? String(item.unitPrice) : ''}
+                              value={
+                                item.unitPrice > 0 ? String(Math.floor(item.unitPrice)) : ''
+                              }
                               onChange={(e) => {
                                 const raw = e.target.value;
                                 if (raw === '') {
@@ -616,7 +627,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
                                 }
                                 onUpdateCartUnitPrice(
                                   item.partId,
-                                  Math.max(0, Math.round(Number(raw) || 0))
+                                  Math.max(0, Math.floor(Number(raw) || 0))
                                 );
                               }}
                               className="w-20 h-7 px-1.5 text-right font-mono tabular-nums text-xs font-bold text-slate-900 border border-slate-300 rounded bg-white focus:ring-2 focus:ring-amber-600 focus:outline-none"
@@ -692,8 +703,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
                   onFocus={() => setCustomerSuggestionsOpen(true)}
                   onBlur={() => window.setTimeout(() => setCustomerSuggestionsOpen(false), 150)}
                   onChange={(e) => {
-                    setCustomerName(e.target.value);
-                    tryAutofillCustomer('name', e.target.value);
+                    setCustomerName(e.target.value.toLocaleUpperCase());
                   }}
                   placeholder="Customer Name"
                 />
@@ -707,7 +717,9 @@ export const BillingView: React.FC<BillingViewProps> = ({
                         onClick={() => fillCustomerDetails(record)}
                         className="block w-full rounded-md border-b border-slate-100 px-3 py-2.5 text-left last:border-0 hover:bg-amber-50 focus:bg-amber-50 focus:outline-none"
                       >
-                        <div className="text-xs font-semibold text-slate-900">{record.customerName}</div>
+                        <div className="text-xs font-semibold text-slate-900">
+                          {record.customerName.toLocaleUpperCase()}
+                        </div>
                         <div className="mt-0.5 text-[11px] text-slate-500">
                           {record.customerPhone || 'No phone'} · {record.customerVillage || 'No address'}
                         </div>
@@ -730,7 +742,7 @@ export const BillingView: React.FC<BillingViewProps> = ({
                   onFocus={() => setCustomerSuggestionsOpen(true)}
                   onChange={(e) => {
                     setCustomerPhone(e.target.value);
-                    tryAutofillCustomer('phone', e.target.value);
+                    tryAutofillCustomerByPhone(e.target.value);
                   }}
                   placeholder="Phone Number"
                 />
@@ -749,7 +761,6 @@ export const BillingView: React.FC<BillingViewProps> = ({
                   onFocus={() => setCustomerSuggestionsOpen(true)}
                   onChange={(e) => {
                     setCustomerAddress(e.target.value);
-                    tryAutofillCustomer('address', e.target.value);
                   }}
                   placeholder="Village / City Address"
                 />
@@ -765,11 +776,38 @@ export const BillingView: React.FC<BillingViewProps> = ({
                 </span>
               </div>
 
-              {totals.discountAmount > 0 && (
+              {partDiscountTotals.discountAmount > 0 && (
                 <div className="flex items-center justify-between text-xs text-slate-600">
                   <span>Parts Discount</span>
                   <span className="font-mono tabular-nums font-semibold text-emerald-700">
-                    -₹{totals.discountAmount.toLocaleString('en-IN')}
+                    -₹{partDiscountTotals.discountAmount.toLocaleString('en-IN')}
+                  </span>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between gap-3 text-xs text-slate-700">
+                <label htmlFor="pos-additional-discount" className="font-semibold">
+                  Additional Discount (₹)
+                </label>
+                <Input
+                  id="pos-additional-discount"
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={additionalDiscountInput}
+                  onChange={(e) => setAdditionalDiscountInput(e.target.value)}
+                  placeholder="0"
+                  className="w-28 text-right"
+                />
+              </div>
+              {totals.discountAmount > partDiscountTotals.discountAmount && (
+                <div className="flex items-center justify-between text-xs text-slate-600">
+                  <span>Additional Discount</span>
+                  <span className="font-mono tabular-nums font-semibold text-emerald-700">
+                    -₹
+                    {(totals.discountAmount - partDiscountTotals.discountAmount).toLocaleString(
+                      'en-IN'
+                    )}
                   </span>
                 </div>
               )}

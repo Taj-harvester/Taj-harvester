@@ -1045,9 +1045,12 @@ export function calculateBillTotals(
   dueAmount: number;
   paymentStatus: PaymentStatus;
 } {
-  const subtotal = items.reduce((acc, item) => acc + item.unitPrice * item.quantity, 0);
+  const subtotal = items.reduce(
+    (acc, item) => acc + Math.floor(item.unitPrice) * item.quantity,
+    0
+  );
   const itemDiscountsSum = items.reduce((acc, item) => {
-    const gross = item.unitPrice * item.quantity;
+    const gross = Math.floor(item.unitPrice) * item.quantity;
     const resolvedDiscount =
       item.discountPercent !== undefined && item.discountPercent > 0
         ? Math.round((gross * Math.min(100, Math.max(0, item.discountPercent))) / 100)
@@ -1089,6 +1092,7 @@ export interface CreateBillPayload {
     unitPrice?: number;
   }[];
   discountAmount?: number;
+  extraDiscountAmount?: number;
   paidAmount: number;
   paymentMode: PaymentMode;
   createdBy: string;
@@ -1135,13 +1139,20 @@ export function executeAtomicBillTransaction(
       );
     }
 
-    const effectiveUnitPrice =
+    const requestedUnitPrice =
       reqItem.unitPrice !== undefined && Number(reqItem.unitPrice) > 0
-        ? Math.max(1, Math.round(Number(reqItem.unitPrice)))
+        ? Number(reqItem.unitPrice)
         : part.price;
+    const effectiveUnitPrice = Math.max(1, Math.floor(requestedUnitPrice));
 
     part.stockQty = Math.max(0, part.stockQty - reqItem.quantity);
-    part.price = effectiveUnitPrice;
+    if (
+      reqItem.unitPrice !== undefined &&
+      Number(reqItem.unitPrice) > 0 &&
+      Number(reqItem.unitPrice) !== part.price
+    ) {
+      part.price = effectiveUnitPrice;
+    }
     part.updatedAt = nowIso;
 
     const grossLine = effectiveUnitPrice * reqItem.quantity;
@@ -1173,7 +1184,11 @@ export function executeAtomicBillTransaction(
 
   const sumItemDiscounts = billItems.reduce((s, i) => s + (i.discount || 0), 0);
   const extraDiscount =
-    sumItemDiscounts > 0 ? 0 : Math.max(0, Math.round(payload.discountAmount || 0));
+    payload.extraDiscountAmount !== undefined
+      ? Math.max(0, Math.round(payload.extraDiscountAmount || 0))
+      : sumItemDiscounts > 0
+        ? 0
+        : Math.max(0, Math.round(payload.discountAmount || 0));
 
   const totals = calculateBillTotals(billItems, extraDiscount, payload.paidAmount);
 

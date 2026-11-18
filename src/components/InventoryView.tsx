@@ -207,7 +207,9 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
       setFormError('Part Number is required for Kubota, Yanmar, GM, and Local parts.');
       return;
     }
-    const finalPartName = nameModel.trim() || '--';
+    const finalPartName = editingPart
+      ? nameModel.trim() || editingPart.nameModel
+      : nameModel.trim() || '--';
     const finalRack = rackLocation.trim() || '--';
 
     const numericPrice = Number(price || 0);
@@ -848,10 +850,10 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
 
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">
-              2. Description *
+              2. Description {editingPart ? '(Optional)' : '*'}
             </label>
             <Input
-              required
+              required={!editingPart}
               value={nameModel}
               onChange={(e) => setNameModel(e.target.value)}
               placeholder={

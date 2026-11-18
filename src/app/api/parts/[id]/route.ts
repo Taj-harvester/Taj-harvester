@@ -21,7 +21,8 @@ export async function PUT(
 
     const existing = shopState.parts[idx];
     const nowIso = new Date().toISOString();
-    const nextName = body.nameModel !== undefined ? String(body.nameModel).trim() : existing.nameModel;
+    const requestedName = body.nameModel !== undefined ? String(body.nameModel).trim() : '';
+    const nextName = requestedName || existing.nameModel;
     if (!nextName) {
       return NextResponse.json({ error: 'Part Name cannot be empty.' }, { status: 400 });
     }
@@ -49,7 +50,12 @@ export async function PUT(
 
     const nextCode = isNoPartNumber ? '--' : rawCode;
 
-    if (!isNoPartNumber) {
+    const partIdentityChanged =
+      nextCode !== existing.partNumber.toUpperCase() ||
+      normalizePartDescriptionForDupCheck(nextName) !==
+        normalizePartDescriptionForDupCheck(existing.nameModel);
+
+    if (!isNoPartNumber && partIdentityChanged) {
       const duplicate = shopState.parts.find(
         (p) =>
           p.id !== id &&

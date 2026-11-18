@@ -231,7 +231,7 @@ export default function App({ initialTab = 'dashboard' }: { initialTab?: ActiveT
         const latestPart = data.parts.find((p) => p.id === item.partId && !p.isArchived);
         if (!latestPart) return item;
         const activeUnitPrice = item.unitPrice > 0 ? item.unitPrice : latestPart.price;
-        const gross = item.quantity * activeUnitPrice;
+        const gross = item.quantity * Math.floor(activeUnitPrice);
         const clampedDisc = Math.min(gross, item.discount || 0);
         return {
           ...item,
@@ -516,7 +516,7 @@ export default function App({ initialTab = 'dashboard' }: { initialTab?: ActiveT
         const nextQty = countCheckEnabled
           ? Math.min(part.stockQty, existing.quantity + 1)
           : existing.quantity + 1;
-        const gross = nextQty * existing.unitPrice;
+        const gross = nextQty * Math.floor(existing.unitPrice);
         const pct = Math.max(0, Math.min(100, existing.discountPercent || 0));
         const clampedDisc = Math.min(gross, Math.round((gross * pct) / 100));
         return prev.map((i) =>
@@ -542,7 +542,7 @@ export default function App({ initialTab = 'dashboard' }: { initialTab?: ActiveT
           quantity: 1,
           discountPercent: 0,
           discount: 0,
-          lineTotal: part.price,
+          lineTotal: Math.floor(part.price),
         },
       ];
     });
@@ -567,7 +567,7 @@ export default function App({ initialTab = 'dashboard' }: { initialTab?: ActiveT
     setCart((prev) =>
       prev.map((i) => {
         if (i.partId !== partId) return i;
-        const gross = clampedQty * i.unitPrice;
+        const gross = clampedQty * Math.floor(i.unitPrice);
         const pct = Math.max(0, Math.min(100, i.discountPercent || 0));
         const clampedDisc = Math.min(gross, Math.round((gross * pct) / 100));
         return {
@@ -586,7 +586,7 @@ export default function App({ initialTab = 'dashboard' }: { initialTab?: ActiveT
     setCart((prev) =>
       prev.map((i) => {
         if (i.partId !== partId) return i;
-        const gross = i.quantity * i.unitPrice;
+        const gross = i.quantity * Math.floor(i.unitPrice);
         const clampedDisc = Math.max(0, Math.min(gross, Math.round((gross * pct) / 100)));
         return {
           ...i,
@@ -599,7 +599,7 @@ export default function App({ initialTab = 'dashboard' }: { initialTab?: ActiveT
   };
 
   const handleUpdateCartUnitPrice = (partId: string, unitPrice: number) => {
-    const cleanPrice = Math.max(0, Math.round(unitPrice || 0));
+    const cleanPrice = Math.max(0, Math.floor(unitPrice || 0));
     setCart((prev) =>
       prev.map((i) => {
         if (i.partId !== partId) return i;
@@ -826,6 +826,7 @@ export default function App({ initialTab = 'dashboard' }: { initialTab?: ActiveT
       unitPrice?: number;
     }[];
     discountAmount: number;
+    extraDiscountAmount?: number;
     paidAmount: number;
     paymentMode: PaymentMode;
     ignoreStockCount?: boolean;

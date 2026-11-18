@@ -184,6 +184,7 @@ test('calculateBillTotals and executeAtomicBillTransaction support per-part perc
       { partId: partB.id, quantity: 1, discountPercent: 0, unitPrice: editedPriceB },
       { partId: partOthers.id, quantity: 3, discountPercent: 0 },
     ],
+    extraDiscountAmount: 35,
     paidAmount: 200,
     paymentMode: 'UPI',
     createdBy: 'tajharvester000',
@@ -206,15 +207,48 @@ test('calculateBillTotals and executeAtomicBillTransaction support per-part perc
 
   const expectedSubtotal = grossA + editedPriceB + partOthers.price * 3;
   assert.equal(createdBill.subtotal, expectedSubtotal);
-  assert.equal(createdBill.discountAmount, expectedDiscountA);
-  assert.equal(createdBill.netTotal, expectedSubtotal - expectedDiscountA);
+  assert.equal(createdBill.discountAmount, expectedDiscountA + 35);
+  assert.equal(createdBill.netTotal, expectedSubtotal - expectedDiscountA - 35);
   assert.equal(createdBill.paidAmount, 200);
-  assert.equal(createdBill.dueAmount, expectedSubtotal - expectedDiscountA - 200);
+  assert.equal(createdBill.dueAmount, expectedSubtotal - expectedDiscountA - 35 - 200);
   assert.equal(createdBill.paymentMode, 'UPI');
 
-  const tots = calculateBillTotals(createdBill.items, 0, 200);
-  assert.equal(tots.discountAmount, expectedDiscountA);
-  assert.equal(tots.netTotal, expectedSubtotal - expectedDiscountA);
+  const tots = calculateBillTotals(createdBill.items, 35, 200);
+  assert.equal(tots.discountAmount, expectedDiscountA + 35);
+  assert.equal(tots.netTotal, expectedSubtotal - expectedDiscountA - 35);
+});
+
+test('billing truncates fractional unit prices and treats the integer payment as fully paid', () => {
+  const state = generateInitialShopState();
+  const part = state.parts[0];
+  part.price = 56.85;
+
+  const { nextState, createdBill } = executeAtomicBillTransaction(state, {
+    customerName: 'Test Customer',
+    customerPhone: '9876543210',
+    customerVillage: 'Local',
+    items: [{ partId: part.id, quantity: 1, unitPrice: 56.85 }],
+    paidAmount: 56,
+    paymentMode: 'CASH',
+    createdBy: 'tajharvester000',
+  });
+
+  assert.equal(createdBill.items[0].unitPrice, 56);
+  assert.equal(createdBill.subtotal, 56);
+  assert.equal(createdBill.netTotal, 56);
+  assert.equal(createdBill.paidAmount, 56);
+  assert.equal(createdBill.dueAmount, 0);
+  assert.equal(createdBill.paymentStatus, 'PAID');
+  assert.equal(nextState.parts.find((candidate) => candidate.id === part.id)?.price, 56.85);
+
+  const fractionalCartTotals = calculateBillTotals(
+    [{ ...createdBill.items[0], unitPrice: 56.85 }],
+    0,
+    56
+  );
+  assert.equal(fractionalCartTotals.subtotal, 56);
+  assert.equal(fractionalCartTotals.netTotal, 56);
+  assert.equal(fractionalCartTotals.dueAmount, 0);
 });
 
 test('recordDuePayment and deleteBillTransaction maintain transaction and due balance accuracy', () => {

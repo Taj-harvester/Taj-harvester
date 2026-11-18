@@ -222,6 +222,7 @@ export interface BackupSnapshot {
 
 export interface ShopState {
   schemaVersion?: number;
+  nextBillInvoiceSequence?: number;
   ownerAccount?: OwnerAccount;
   staffAccounts?: StaffAccount[];
   parts: SparePart[];
